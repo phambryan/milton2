@@ -31,7 +31,7 @@ import java.util.List;
  * http://localhost:8080/users/userA/ - iCal will discover the calendar inside
  * that user.
  *
- * For Mozilla clients (eg thunderbird) connect directory to the calendar url,
+ * For Mozilla clients (eg thunderbird) connect directly to the calendar url,
  * eg
  *
  * http://localhost:8080/users/userA/calendars/cal1/
@@ -62,6 +62,9 @@ public class TResourceFactory implements ResourceFactory {
         user.setOrganizationName(org);
         user.setTelephonenumber(phone);
 
+        TFolderResource files = new TFolderResource(user, "files");
+        
+        
         TFolderResource calendars = new TFolderResource(user, "calendars");
         TCalendarResource cal1 = new TCalendarResource(calendars, "cal1");
         TEvent e = new TEvent(cal1, "event1.ics");
