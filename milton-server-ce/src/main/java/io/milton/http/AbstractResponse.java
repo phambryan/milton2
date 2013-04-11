@@ -70,7 +70,7 @@ public abstract class AbstractResponse implements Response {
         if (finish > -1) {
             s = "bytes " + start + "-" + finish + "/" + l;
         } else {
-            long wrotetill = totalLength.longValue() - 1;
+            long wrotetill = totalLength == null ? 0 : totalLength.longValue() - 1;
             //The end position starts counting at zero. So subtract 1
             s = "bytes " + start + "-" + wrotetill + "/" + l;
         }
@@ -154,11 +154,11 @@ public abstract class AbstractResponse implements Response {
             if (sb == null) {
                 sb = new StringBuilder();
             } else {
-                sb.append(",");
+                sb.append(", ");
             }
             sb.append(m);
         }
-        setResponseHeader(Header.ALLOW, sb.toString());
+        setResponseHeader(Header.ALLOW, sb == null ? "" : sb.toString());
     }
 
 	@Override
@@ -175,6 +175,18 @@ public abstract class AbstractResponse implements Response {
     public void setVaryHeader(String value) {
         setResponseHeader(Header.VARY, value);
     }
+
+	@Override
+	public String getAccessControlAllowOrigin() {
+		return getResponseHeader(Header.ACCESS_CONTROL_ALLOW_ORIGIN);
+	}
+
+	@Override
+	public void setAccessControlAllowOrigin(String s) {
+		setResponseHeader(Header.ACCESS_CONTROL_ALLOW_ORIGIN, s);
+	}
+	
+	
 
     @Override
     public void setEntity(Entity entity) {

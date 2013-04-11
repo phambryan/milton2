@@ -182,7 +182,7 @@ public class HandlerHelper {
 		LockToken token = lr.getCurrentLock();
 		if (token != null) {
 			Auth auth = inRequest.getAuthorization();
-			Object sUser = null;
+			String sUser = null;
 			if (auth != null) {
 				sUser = auth.getUser();
 			}
@@ -209,6 +209,7 @@ public class HandlerHelper {
 						return false;
 					}
 				}
+				log.warn("Locked out. Request token: " + value + " actual token: " + token.tokenId + " LockedByUser=" + lockedByUser + " RequestUser=" + sUser);
 				return true;
 			}
 		}

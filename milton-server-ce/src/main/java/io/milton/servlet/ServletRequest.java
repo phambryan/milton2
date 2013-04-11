@@ -46,6 +46,7 @@ import io.milton.servlet.upload.MonitoredDiskFileItemFactory;
 import io.milton.servlet.upload.UploadListener;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.Locale;
 import javax.servlet.ServletContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -196,8 +197,19 @@ public class ServletRequest extends AbstractRequest {
             } else {
                 for (Enumeration en = request.getParameterNames(); en.hasMoreElements();) {
                     String nm = (String) en.nextElement();
-                    String val = request.getParameter(nm);
-                    params.put(nm, val);
+					String[] vals = request.getParameterValues(nm);
+					if( vals.length == 1) {
+						params.put(nm, vals[0]);
+					} else {
+						StringBuilder sb = new StringBuilder();
+						for( String s : vals) {
+							sb.append(s).append(",");
+						}
+						if( sb.length() > 0 ) {
+							sb.deleteCharAt(sb.length()-1); // remove last comma
+						}
+						params.put(nm, sb.toString());
+					}					
                 }
             }
         } catch (FileUploadException ex) {
@@ -297,4 +309,11 @@ public class ServletRequest extends AbstractRequest {
     public ServletContext getServletContext() {
         return servletContext;
     }
+
+	@Override
+	public Locale getLocale() {
+		return request.getLocale();
+	}
+	
+	
 }

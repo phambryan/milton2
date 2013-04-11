@@ -19,7 +19,8 @@
 
 package io.milton.resource;
 
-import io.milton.resource.PropFindableResource;
+import io.milton.http.values.SupportedCalendarComponentList;
+import java.util.List;
 
 /**
  *
@@ -27,10 +28,26 @@ import io.milton.resource.PropFindableResource;
  */
 public interface CalendarResource extends CalendarCollection, PropFindableResource {
 
+    public enum ComponentType {
+        VEVENT,
+        VTODO,
+        VTIMEZONE,
+        VFREEBUSY
+    }
+    
     String getCalendarDescription();
 
     String getColor();
     
     void setColor(String s);	
 
+    /**
+     * If there is a restriction as to what types of components may be created within
+     * this calendar collection, then return the allowed components. If there are
+     * no restrictions return null.
+     * 
+     * @return 
+     */
+    SupportedCalendarComponentList getSupportedComponentSet();
+    
 }

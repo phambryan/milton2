@@ -1,20 +1,5 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Copyright 2012 McEvoy Software Ltd.
  */
 package io.milton.http.webdav2;
 
@@ -56,7 +41,7 @@ public class WebDavLevel2Protocol implements HttpExtension, PropertySource {
     private final UserAgentHelper userAgentHelper;
     private List<CustomPostHandler> customPostHandlers;
 
-    public WebDavLevel2Protocol(HandlerHelper handlerHelper, WebDavResponseHandler responseHandler, ResourceHandlerHelper resourceHandlerHelper, UserAgentHelper userAgentHelper, ValueWriters valueWriters) {
+    public WebDavLevel2Protocol(HandlerHelper handlerHelper, WebDavResponseHandler responseHandler, ResourceHandlerHelper resourceHandlerHelper, UserAgentHelper userAgentHelper) {
         this.userAgentHelper = userAgentHelper;
         this.propertyMap = new PropertyMap(WebDavProtocol.NS_DAV.getName());
         propertyMap.add(new SupportedLockPropertyWriter());
@@ -64,10 +49,7 @@ public class WebDavLevel2Protocol implements HttpExtension, PropertySource {
 
         handlers = new HashSet<Handler>();
         handlers.add(new LockHandler(responseHandler, handlerHelper));
-        handlers.add(new UnlockHandler(resourceHandlerHelper, responseHandler));
-        
-        valueWriters.getValueWriters().add(0, new SupportedLockValueWriter());
-        valueWriters.getValueWriters().add(0, new LockTokenValueWriter());
+        handlers.add(new UnlockHandler(resourceHandlerHelper, responseHandler));        
     }
 
     @Override
@@ -150,6 +132,7 @@ public class WebDavLevel2Protocol implements HttpExtension, PropertySource {
 //    <D:supportedlock/><D:lockdiscovery/>
     class LockDiscoveryPropertyWriter implements StandardProperty<LockToken> {
 
+        @Override
         public LockToken getValue(PropFindableResource res) {
             if (!(res instanceof LockableResource)) {
                 return null;

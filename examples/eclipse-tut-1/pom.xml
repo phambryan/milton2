@@ -1,11 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>io.milton</groupId>
-        <artifactId>milton</artifactId>
-        <version>2.2.1</version>
-    </parent>
+
     <groupId>io.milton.tuts</groupId>
     <artifactId>eclipse-tut-1</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -16,7 +12,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <milton.version>2.2.1</milton.version>
+        <milton.version>2.4.2.4</milton.version>
     </properties>
 
     <build>
@@ -40,22 +36,23 @@
         </plugins>
     </build>
 
+    <repositories>
+        <repository>
+            <id>ettrema-repo</id>
+            <url>http://milton.io/maven/</url>
+        </repository>       
+    </repositories>     
+
     <dependencies>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-log4j12</artifactId>
-            <version>1.5.2</version>
+            <version>1.6.1</version>
         </dependency>
         <dependency>
             <groupId>io.milton</groupId>
-            <artifactId>milton-server-ent</artifactId>
+            <artifactId>milton-server-ce</artifactId>
             <version>${milton.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>servlet-api</artifactId>
-            <version>2.4</version>
-            <scope>provided</scope>
-        </dependency>        
+        </dependency>     
     </dependencies>
 </project>

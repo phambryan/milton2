@@ -1,16 +1,6 @@
 /*
  * Copyright 2012 McEvoy Software Ltd.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package io.milton.ent.config;
 
@@ -19,19 +9,22 @@ import io.milton.config.HttpManagerBuilder;
 import io.milton.http.*;
 import io.milton.http.acl.ACLProtocol;
 import io.milton.http.acl.AccessControlledResourceTypeHelper;
+import io.milton.http.annotated.AnnotationResourceFactory;
 import io.milton.http.caldav.CalDavProtocol;
 import io.milton.http.caldav.CalendarResourceTypeHelper;
+import io.milton.http.caldav.SupportedCalendarComponentListValueWriter;
+import io.milton.http.caldav.SupportedCalendarComponentListsSetValueWriter;
 import io.milton.http.carddav.AddressBookResourceTypeHelper;
 import io.milton.http.carddav.CardDavProtocol;
 import io.milton.http.fck.FckResourceFactory;
+import io.milton.http.fs.SimpleLockManager;
 import io.milton.http.http11.*;
-import io.milton.http.json.JsonResourceFactory;
-import io.milton.http.webdav.DefaultUserAgentHelper;
 import io.milton.http.webdav.PropertySourcePatchSetter;
 import io.milton.http.webdav.ResourceTypeHelper;
-import io.milton.http.webdav.WebDavProtocol;
 import io.milton.http.webdav.WebDavResourceTypeHelper;
 import io.milton.http.webdav.WebDavResponseHandler;
+import io.milton.http.webdav2.LockTokenValueWriter;
+import io.milton.http.webdav2.SupportedLockValueWriter;
 import io.milton.http.webdav2.WebDavLevel2Protocol;
 import io.milton.http.webdav2.WebDavLevel2ResourceTypeHelper;
 import java.util.ArrayList;
@@ -76,6 +69,18 @@ public class HttpManagerBuilderEnt extends HttpManagerBuilder {
     private boolean enableWellKnown = true;
     private WebDavLevel2Protocol webDavLevel2Protocol;
     private boolean webdavLevel2Enabled = true;
+    private LockManager lockManager = new SimpleLockManager();
+
+    @Override
+    protected void afterInit() {
+        super.afterInit();
+        if (getMainResourceFactory() instanceof AnnotationResourceFactory) {
+            AnnotationResourceFactory arf = (AnnotationResourceFactory) getMainResourceFactory();
+            if (arf.getLockManager() == null) {
+                arf.setLockManager(lockManager);
+            }
+        }
+    }
 
     @Override
     protected void buildOuterResourceFactory() {
@@ -83,7 +88,7 @@ public class HttpManagerBuilderEnt extends HttpManagerBuilder {
         if (outerResourceFactory == null) {
             outerResourceFactory = mainResourceFactory; // in case nothing else enabled
             if (enabledJson) {
-                outerResourceFactory = new JsonResourceFactory(outerResourceFactory, eventManager, propertySources, propPatchSetter, initPropertyAuthoriser());
+                outerResourceFactory = buildJsonResourceFactory();
                 log.info("Enabled json/ajax gatewayw with: " + outerResourceFactory.getClass());
             }
             if (enableWellKnown) {
@@ -142,21 +147,20 @@ public class HttpManagerBuilderEnt extends HttpManagerBuilder {
             if (propPatchSetter == null) {
                 propPatchSetter = new PropertySourcePatchSetter(propertySources);
             }
-            if (userAgentHelper == null) {
-                userAgentHelper = new DefaultUserAgentHelper();
-            }
 
-            if (webDavProtocol == null && webdavEnabled) {
-                webDavProtocol = new WebDavProtocol(handlerHelper, resourceTypeHelper, webdavResponseHandler, propertySources, quotaDataAccessor, propPatchSetter, initPropertyAuthoriser(), eTagGenerator, urlAdapter, resourceHandlerHelper, userAgentHelper);
-            }
+
+            initWebdavProtocol();
             if (webDavProtocol != null) {
                 protocols.add(webDavProtocol);
             }
 
             if (webDavLevel2Protocol == null && webdavLevel2Enabled) {
-                webDavLevel2Protocol = new WebDavLevel2Protocol(handlerHelper, webdavResponseHandler, resourceHandlerHelper, userAgentHelper, valueWriters);
+                webDavLevel2Protocol = new WebDavLevel2Protocol(handlerHelper, webdavResponseHandler, resourceHandlerHelper, userAgentHelper());
             }
             if (webDavLevel2Protocol != null) {
+                valueWriters.getValueWriters().add(0, new SupportedLockValueWriter());
+                valueWriters.getValueWriters().add(0, new LockTokenValueWriter());
+
                 protocols.add(webDavLevel2Protocol);
                 if (webDavProtocol != null) {
                     webDavProtocol.addPropertySource(webDavLevel2Protocol);
@@ -164,7 +168,7 @@ public class HttpManagerBuilderEnt extends HttpManagerBuilder {
             }
 
             if (calDavProtocol == null && caldavEnabled) {
-                calDavProtocol = new CalDavProtocol(mainResourceFactory, webdavResponseHandler, handlerHelper, webDavProtocol);
+                calDavProtocol = new CalDavProtocol(mainResourceFactory, webdavResponseHandler, handlerHelper, webDavProtocol, propFindXmlGenerator, propFindPropertyBuilder());
             }
             if (calDavProtocol != null) {
                 protocols.add(calDavProtocol);
@@ -178,9 +182,11 @@ public class HttpManagerBuilderEnt extends HttpManagerBuilder {
             }
 
             if (cardDavProtocol == null && carddavEnabled) {
-                cardDavProtocol = new CardDavProtocol(mainResourceFactory, webdavResponseHandler, handlerHelper, webDavProtocol);
+                cardDavProtocol = new CardDavProtocol(mainResourceFactory, webdavResponseHandler, handlerHelper, webDavProtocol, propFindXmlGenerator, propFindPropertyBuilder());
             }
-            if (calDavProtocol != null) {
+            if (cardDavProtocol != null) {
+                valueWriters.getValueWriters().add(0, new SupportedCalendarComponentListValueWriter());
+                valueWriters.getValueWriters().add(0, new SupportedCalendarComponentListsSetValueWriter());
                 protocols.add(cardDavProtocol);
             }
         }
@@ -268,5 +274,18 @@ public class HttpManagerBuilderEnt extends HttpManagerBuilder {
 
     public void setWebdavLevel2Enabled(boolean webdavLevel2Enabled) {
         this.webdavLevel2Enabled = webdavLevel2Enabled;
+    }
+
+    /**
+     * Only required for AnnotationResourceFactory
+     *
+     * @return
+     */
+    public LockManager getLockManager() {
+        return lockManager;
+    }
+
+    public void setLockManager(LockManager lockManager) {
+        this.lockManager = lockManager;
     }
 }

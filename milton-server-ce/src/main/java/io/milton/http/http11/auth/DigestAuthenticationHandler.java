@@ -24,6 +24,7 @@ import io.milton.http.AuthenticationHandler;
 import io.milton.resource.DigestResource;
 import io.milton.http.Request;
 import io.milton.resource.Resource;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +44,11 @@ public class DigestAuthenticationHandler implements AuthenticationHandler {
         this.digestHelper = new DigestHelper(nonceProvider);
     }
 
+	@Override
+	public boolean credentialsPresent(Request request) {
+		return request.getAuthorization() != null;
+	}	
+	
 	@Override
     public boolean supports( Resource r, Request request ) {
         Auth auth = request.getAuthorization();
@@ -69,7 +75,11 @@ public class DigestAuthenticationHandler implements AuthenticationHandler {
     public Object authenticate( Resource r, Request request ) {
         DigestResource digestResource = (DigestResource) r;
         Auth auth = request.getAuthorization();
-        DigestResponse resp = digestHelper.calculateResponse(auth, r.getRealm(), request.getMethod());
+		String realm = r.getRealm();
+		if( realm == null ) {
+			throw new NullPointerException("Got null realm from resource: " + r.getClass());
+		}
+        DigestResponse resp = digestHelper.calculateResponse(auth, realm, request.getMethod());
         if( resp == null ) {
             log.info("requested digest authentication is invalid or incorrectly formatted");
             return null;
@@ -83,10 +93,10 @@ public class DigestAuthenticationHandler implements AuthenticationHandler {
     }
 
 	@Override
-    public String getChallenge( Resource resource, Request request ) {
+    public void appendChallenges( Resource resource, Request request, List<String> challenges ) {
 
         String nonceValue = nonceProvider.createNonce( resource, request );
-        return digestHelper.getChallenge(nonceValue, request.getAuthorization(), resource.getRealm());
+        challenges.add( digestHelper.getChallenge(nonceValue, request.getAuthorization(), resource.getRealm()) );
     }
 
 	@Override
@@ -95,6 +105,7 @@ public class DigestAuthenticationHandler implements AuthenticationHandler {
 			DigestResource dr = (DigestResource) resource;
 			return dr.isDigestAllowed();
 		} else {
+			log.trace("Digest auth not supported because class does not implement DigestResource");
 			return false;
 		}
     }

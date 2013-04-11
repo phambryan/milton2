@@ -1,16 +1,7 @@
 /*
  * Copyright 2012 McEvoy Software Ltd.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * 
  */
 
 package com.ettrema.http.caldav;
@@ -18,6 +9,7 @@ package com.ettrema.http.caldav;
 import io.milton.http.ResourceFactory;
 import io.milton.http.caldav.ExpandPropertyReport;
 import io.milton.http.values.*;
+import io.milton.http.webdav.DefaultPropFindPropertyBuilder;
 import io.milton.http.webdav.PropFindPropertyBuilder;
 import io.milton.http.webdav.PropFindXmlGenerator;
 import io.milton.http.webdav.PropFindXmlGeneratorHelper;
@@ -69,7 +61,7 @@ public class ExpandPropertyReportTest extends TestCase {
 		propertySources = Arrays.asList(propertySource);
 		meta1 = new PropertySource.PropertyMetaData(PropertySource.PropertyAccessibility.READ_ONLY, HrefList.class);
                 meta2 = new PropertySource.PropertyMetaData(PropertySource.PropertyAccessibility.READ_ONLY, HrefList.class);
-		propertyBuilder = new PropFindPropertyBuilder(propertySources);
+		propertyBuilder = new DefaultPropFindPropertyBuilder(propertySources);
 		otherResource = createMock(PropFindableResource.class);
                 otherResource2 = createMock(PropFindableResource.class);
 		resourceFactory = createMock(ResourceFactory.class);

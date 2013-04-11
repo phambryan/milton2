@@ -1,20 +1,5 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Copyright 2012 McEvoy Software Ltd.
  */
 
 
@@ -36,6 +21,7 @@ import io.milton.http.exceptions.BadRequestException;
 import io.milton.http.exceptions.ConflictException;
 import io.milton.http.exceptions.NotAuthorizedException;
 import io.milton.http.webdav.WebDavResponseHandler;
+import io.milton.webdav.utils.LockUtils;
 
 public class UnlockHandler implements ExistingEntityHandler {
 
@@ -51,18 +37,21 @@ public class UnlockHandler implements ExistingEntityHandler {
     }
 
 
+    @Override
     public void process( HttpManager httpManager, Request request, Response response ) throws ConflictException, NotAuthorizedException, BadRequestException {
         resourceHandlerHelper.process( httpManager, request, response, this );
     }
 
+    @Override
     public void processResource( HttpManager manager, Request request, Response response, Resource r ) throws NotAuthorizedException, ConflictException, BadRequestException {
         resourceHandlerHelper.processResource( manager, request, response, r, this );
     }
 
+    @Override
     public void processExistingResource( HttpManager manager, Request request, Response response, Resource resource ) throws NotAuthorizedException, BadRequestException, ConflictException {
         LockableResource r = (LockableResource) resource;
         String sToken = request.getLockTokenHeader();        
-        sToken = LockHandler.parseToken(sToken);
+        sToken = LockUtils.parse(sToken);
         
         // this should be checked in processResource now
         
@@ -86,6 +75,7 @@ public class UnlockHandler implements ExistingEntityHandler {
         }
     }
     
+    @Override
     public String[] getMethods() {
         return new String[]{Method.UNLOCK.code};
     }

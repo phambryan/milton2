@@ -1,16 +1,6 @@
 /*
  * Copyright 2012 McEvoy Software Ltd.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package io.milton.http.carddav;
@@ -74,7 +64,7 @@ public class CardDavProtocol implements HttpExtension, PropertySource, WellKnown
     private final Set<Handler> handlers;
     private final PropertyMap propertyMapCardDav;
 
-    public CardDavProtocol(ResourceFactory resourceFactory, WebDavResponseHandler responseHandler, HandlerHelper handlerHelper, WebDavProtocol webDavProtocol) {
+    public CardDavProtocol(ResourceFactory resourceFactory, WebDavResponseHandler responseHandler, HandlerHelper handlerHelper, WebDavProtocol webDavProtocol, PropFindXmlGenerator gen, PropFindPropertyBuilder propertyBuilder) {
         propertyMapCardDav = new PropertyMap(CARDDAV_NS);
         propertyMapCardDav.add(new AddressBookHomeSetProperty());
         propertyMapCardDav.add(new AddressBookDescriptionProperty());
@@ -84,10 +74,7 @@ public class CardDavProtocol implements HttpExtension, PropertySource, WellKnown
 
         handlers = new HashSet<Handler>();
 
-        ValueWriters valueWriters = new ValueWriters();
-        PropFindXmlGenerator gen = new PropFindXmlGenerator(valueWriters);
         webDavProtocol.addPropertySource(this);
-        PropFindPropertyBuilder propertyBuilder = new PropFindPropertyBuilder(webDavProtocol.getPropertySources());
         
         webDavProtocol.addReport(new AddressBookMultiGetReport(resourceFactory, propertyBuilder, gen));
         webDavProtocol.addReport(new AddressBookQueryReport());
@@ -492,7 +479,7 @@ public class CardDavProtocol implements HttpExtension, PropertySource, WellKnown
                         return null;
                     } else {
                         first = addressBookHomes.get(0); // just use first
-                        LogUtils.trace(log, "well-known: checkRedirect. redirecting to:", first);
+                        LogUtils.debug(log, "well-known: checkRedirect. redirecting to:", first);
                         return first;
                     }
                 } else {

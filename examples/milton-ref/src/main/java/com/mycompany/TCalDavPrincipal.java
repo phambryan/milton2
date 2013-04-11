@@ -24,6 +24,8 @@ import io.milton.http.caldav.ICalFormatter;
 import io.milton.http.exceptions.BadRequestException;
 import io.milton.http.exceptions.NotAuthorizedException;
 import io.milton.http.values.HrefList;
+import io.milton.http.values.SupportedCalendarComponentList;
+import io.milton.http.values.SupportedCalendarComponentListsSet;
 import io.milton.ldap.Condition;
 import io.milton.ldap.LdapPrincipal;
 import io.milton.mail.Mailbox;
@@ -49,7 +51,7 @@ import javax.mail.internet.MimeMessage;
  * @author brad
  */
 @BeanPropertyResource(value = "ldap")
-public class TCalDavPrincipal extends TFolderResource implements CalDavPrincipal, Mailbox, CalendarResource, CardDavPrincipal, LdapPrincipal, LdapContact {
+public class TCalDavPrincipal extends TFolderResource implements CalDavPrincipal, Mailbox, CalendarResource, CardDavPrincipal, LdapPrincipal, LdapContact { 
 
     private static org.apache.log4j.Logger log = org.apache.log4j.Logger.getLogger(AbstractResource.class);
     private HrefPrincipleId principleId;
@@ -202,7 +204,6 @@ public class TCalDavPrincipal extends TFolderResource implements CalDavPrincipal
 
     @Override
     public HrefList getCalendarUserAddressSet() {
-
         return HrefList.asList("mailto:" + name + "@localhost", getHref());
     }
 
@@ -353,4 +354,18 @@ public class TCalDavPrincipal extends TFolderResource implements CalDavPrincipal
     public String getCommonName() {
         return givenName + " " + surName;
     }
+
+    @Override
+    public SupportedCalendarComponentListsSet getSupportedComponentSets() {
+        return null;
+    }
+
+    @Override
+    public SupportedCalendarComponentList getSupportedComponentSet() {
+        return null; // probably should not implement CalendarResource ... ?
+    }
+
+    
+
+    
 }

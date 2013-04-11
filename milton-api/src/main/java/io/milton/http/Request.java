@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public interface Request {
@@ -68,12 +69,14 @@ public interface Request {
         DESTINATION("Destination"),
         REFERER("Referer"),
         ACCEPT("Accept"),
+        ACCEPT_LANGUAGE("Accept-Language"),
         RANGE("Range"),
         ACCEPT_ENCODING("Accept-Encoding"),
         TIMEOUT("Timeout"),
         LOCK_TOKEN("Lock-Token"),
         EXPECT("Expect"),
         OVERWRITE("Overwrite"),
+        ORIGIN("Origin"),
         USER_AGENT("User-Agent"),
         /**
          * For compatibility with macOS finder from 10.5.3
@@ -183,6 +186,16 @@ public interface Request {
     String getAcceptEncodingHeader();
 
     /**
+     * Get the user-agents preferred languages. 
+     * 
+     * Eg: en-ca,en;q=0.8,en-us;q=0.6,de-de;q=0.4,de;q=0.2
+     * 
+     * 
+     * @return 
+     */
+    String getAcceptLanguage();
+    
+    /**
      *
      * @return a range header, for partial gets
      */
@@ -204,6 +217,9 @@ public interface Request {
      */
     Boolean getOverwriteHeader();
 
+    
+    String getOriginHeader();
+    
     /**
      *
      * @return - the user agent header field
@@ -276,4 +292,11 @@ public interface Request {
      * @return
      */
     String getRemoteAddr();
+    
+    /**
+     * Use the Accept-Language header to derive a java Locale
+     * 
+     * @return 
+     */
+    Locale getLocale();
 }

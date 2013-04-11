@@ -1,20 +1,12 @@
 /*
  * Copyright 2012 McEvoy Software Ltd.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package io.milton.http.caldav;
 
+import io.milton.webdav.utils.CalendarDataProperty;
+import io.milton.http.values.SupportedCalendarComponentList;
 import io.milton.principal.CalDavPrincipal;
 import io.milton.common.LogUtils;
 import io.milton.http.Auth;
@@ -31,9 +23,7 @@ import io.milton.http.exceptions.NotAuthorizedException;
 import io.milton.http.exceptions.NotFoundException;
 import io.milton.http.http11.CustomPostHandler;
 import io.milton.http.http11.auth.DigestResponse;
-import io.milton.http.values.CData;
 import io.milton.http.values.HrefList;
-import io.milton.http.values.ValueWriters;
 import io.milton.http.values.WrappedHref;
 import io.milton.http.webdav.PropFindPropertyBuilder;
 import io.milton.http.webdav.PropFindXmlGenerator;
@@ -44,8 +34,8 @@ import io.milton.http.webdav.WebDavResponseHandler;
 import io.milton.property.PropertySource;
 import io.milton.resource.CalendarCollection;
 import io.milton.resource.CalendarResource;
-import io.milton.resource.ICalResource;
 import io.milton.http.acl.ACLHandler;
+import io.milton.http.values.SupportedCalendarComponentListsSet;
 import io.milton.resource.DigestResource;
 import io.milton.resource.GetableResource;
 import io.milton.resource.PropFindableResource;
@@ -82,12 +72,17 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
     private final SchedulingCustomPostHandler schedulingCustomPostHandler;
     private final List<CustomPostHandler> customPostHandlers;
 
-    public CalDavProtocol(ResourceFactory resourceFactory, WebDavResponseHandler responseHandler, HandlerHelper handlerHelper, WebDavProtocol webDavProtocol) {
+    public CalDavProtocol(ResourceFactory resourceFactory, WebDavResponseHandler responseHandler, HandlerHelper handlerHelper, WebDavProtocol webDavProtocol, PropFindXmlGenerator gen, PropFindPropertyBuilder propertyBuilder) {
+        if( gen == null ) {
+            throw new NullPointerException("PropFindXmlGenerator is null");
+        }
         propertyMapCalDav = new PropertyMap(CALDAV_NS);
         propertyMapCalDav.add(new CalenderDescriptionProperty());
         propertyMapCalDav.add(new CalendarDataProperty());
         propertyMapCalDav.add(new CalenderHomeSetProperty());
         propertyMapCalDav.add(new CalenderUserAddressSetProperty());
+        propertyMapCalDav.add(new SupportedCalendarComponentSetProperty());
+        propertyMapCalDav.add(new SupportedCalendarComponentSetsProperty());
         //propertyMapCalDav.add(new ScheduleInboxProperty());
         //propertyMapCalDav.add(new ScheduleOutboxProperty());
 
@@ -106,10 +101,7 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
 
         handlers.add(new MkCalendarHandler(webDavProtocol.getMkColHandler(), webDavProtocol.getPropPatchHandler()));
 
-        ValueWriters valueWriters = new ValueWriters();
-        PropFindXmlGenerator gen = new PropFindXmlGenerator(valueWriters);
         webDavProtocol.addPropertySource(this);
-        PropFindPropertyBuilder propertyBuilder = new PropFindPropertyBuilder(webDavProtocol.getPropertySources());
 
         //Adding supported reports
         webDavProtocol.addReport(new MultiGetReport(resourceFactory, propertyBuilder, gen));
@@ -189,29 +181,6 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
     @Override
     public List<CustomPostHandler> getCustomPostHandlers() {
         return customPostHandlers;
-    }
-
-    class CalendarDataProperty implements StandardProperty<CData> {
-
-        @Override
-        public String fieldName() {
-            return "calendar-data";
-        }
-
-        @Override
-        public CData getValue(PropFindableResource res) {
-            if (res instanceof ICalResource) {
-                ICalResource ical = (ICalResource) res;
-                return new CData(ical.getICalData());
-            } else {
-                return null;
-            }
-        }
-
-        @Override
-        public Class<CData> getValueClass() {
-            return CData.class;
-        }
     }
 
     /*
@@ -319,10 +288,12 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
      */
     class ScheduleInboxProperty implements StandardProperty<WrappedHref> {
 
+        @Override
         public String fieldName() {
             return "schedule-inbox-URL";
         }
 
+        @Override
         public WrappedHref getValue(PropFindableResource res) {
             if (res instanceof CalDavPrincipal) {
                 String s = ((CalDavPrincipal) res).getScheduleInboxUrl();
@@ -332,6 +303,7 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
             }
         }
 
+        @Override
         public Class<WrappedHref> getValueClass() {
             return WrappedHref.class;
         }
@@ -344,10 +316,12 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
      */
     class ScheduleOutboxProperty implements StandardProperty<WrappedHref> {
 
+        @Override
         public String fieldName() {
             return "schedule-outbox-URL";
         }
 
+        @Override
         public WrappedHref getValue(PropFindableResource res) {
             if (res instanceof CalDavPrincipal) {
                 String s = ((CalDavPrincipal) res).getScheduleOutboxUrl();
@@ -358,6 +332,7 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
 
         }
 
+        @Override
         public Class<WrappedHref> getValueClass() {
             return WrappedHref.class;
         }
@@ -370,10 +345,12 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
      */
     class DropBoxProperty implements StandardProperty<WrappedHref> {
 
+        @Override
         public String fieldName() {
             return "dropbox-home-URL";
         }
 
+        @Override
         public WrappedHref getValue(PropFindableResource res) {
             if (res instanceof CalDavPrincipal) {
                 String s = ((CalDavPrincipal) res).getDropBoxUrl();
@@ -383,6 +360,7 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
             }
         }
 
+        @Override
         public Class<WrappedHref> getValueClass() {
             return WrappedHref.class;
         }
@@ -396,14 +374,17 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
      */
     class XMPPProperty implements StandardProperty<String> {
 
+        @Override
         public String fieldName() {
             return "xmpp-uri";
         }
 
+        @Override
         public String getValue(PropFindableResource res) {
             return "xmpp:romeo@montague.net";
         }
 
+        @Override
         public Class<String> getValueClass() {
             return String.class;
         }
@@ -543,6 +524,86 @@ public class CalDavProtocol implements HttpExtension, PropertySource, WellKnownH
             }
         }
     }    
+    
+    /**
+     * Implemented on CalDavPrincpials
+     * 
+     * See http://tools.ietf.org/html/draft-daboo-caldav-extensions-01#page-7
+     * 
+     * If servers apply restrictions on the allowed calendar
+      component sets used when creating a calendar, then those servers
+      SHOULD advertise this property on each calendar home collection
+      within which the restrictions apply.  In the absence of this
+      property, clients cannot assume anything about whether the server
+      will enforce a set of restrictions or not - in that case clients
+      need to handle the server rejecting certain combinations of
+      restricted component sets.  If this property is present, but
+      contains no child XML elements, then clients can assume that the
+      server imposes no restrictions on the combinations of component
+      types it is willing to accept.  If present, each CALDAV:supported-
+      calendar-component-set element represents a valid restriction the
+      client can use in an MKCALENDAR or extended MKCOL request when
+      creating a calendar.
+     */
+    class SupportedCalendarComponentSetsProperty implements PropertyMap.WritableStandardProperty<SupportedCalendarComponentListsSet> {
+
+        @Override
+        public String fieldName() {
+            return "supported-calendar-component-sets";
+        }
+
+        @Override
+        public SupportedCalendarComponentListsSet getValue(PropFindableResource res) {
+            if (res instanceof CalDavPrincipal) {
+                CalDavPrincipal ccol = (CalDavPrincipal) res;
+                return ccol.getSupportedComponentSets();
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public Class<SupportedCalendarComponentListsSet> getValueClass() {
+            return SupportedCalendarComponentListsSet.class;
+        }
+
+        @Override
+        public void setValue(PropFindableResource res, SupportedCalendarComponentListsSet value) {
+
+        }
+    }    
+    
+    /**
+     * See http://www.ietf.org/rfc/rfc4791.txt
+     * 
+     */
+    class SupportedCalendarComponentSetProperty implements PropertyMap.WritableStandardProperty<SupportedCalendarComponentList>{
+
+        @Override
+        public String fieldName() {
+            return "supported-calendar-component-set";
+        }
+
+        @Override
+        public SupportedCalendarComponentList getValue(PropFindableResource res) {
+            if (res instanceof CalendarResource) {
+                CalendarResource ccol = (CalendarResource) res;
+                return ccol.getSupportedComponentSet();
+            } else {
+                return null;
+            }
+        }
+
+        @Override
+        public Class<SupportedCalendarComponentList> getValueClass() {
+            return SupportedCalendarComponentList.class;
+        }
+
+        @Override
+        public void setValue(PropFindableResource res, SupportedCalendarComponentList value) {
+
+        }        
+    }
     
     @Override
     public String getWellKnownName() {

@@ -1,16 +1,6 @@
 /*
  * Copyright 2012 McEvoy Software Ltd.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package io.milton.http.caldav;
 
@@ -21,6 +11,7 @@ import io.milton.resource.SchedulingInboxResource;
 import io.milton.resource.SchedulingOutboxResource;
 import io.milton.resource.CollectionResource;
 import io.milton.resource.Resource;
+import io.milton.webdav.utils.LockUtils;
 import java.util.ArrayList;
 import java.util.List;
 import javax.xml.namespace.QName;
@@ -95,12 +86,12 @@ public class CalendarResourceTypeHelper implements ResourceTypeHelper {
         log.debug("getSupportedLevels");
         List<String> list = wrapped.getSupportedLevels(r);
 //        if (r instanceof CalendarResource) {
-        addIfNotPresent(list, "3");
+        LockUtils.add(list, "3");
         list.add("calendar-access");
         
         // if present (but not actually implemented) causes problems with thunderbird
         //list.add("calendar-schedule");
-        addIfNotPresent(list, "extended-mkcol");
+        LockUtils.add(list, "extended-mkcol");
         list.add("calendar-proxy");
 //        }
         if (r instanceof SchedulingInboxResource) {
@@ -110,11 +101,5 @@ public class CalendarResourceTypeHelper implements ResourceTypeHelper {
             list.add("schedule-outbox");
         }
         return list;
-    }
-
-    private void addIfNotPresent(List<String> list, String s) {
-        if (!list.contains(s)) {
-            list.add(s);
-        }
     }
 }

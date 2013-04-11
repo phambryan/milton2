@@ -18,11 +18,14 @@
  */
 package io.milton.config;
 
+import io.milton.annotations.ResourceController;
 import io.milton.property.PropertySource;
 import io.milton.common.Stoppable;
 import io.milton.event.EventManager;
 import io.milton.event.EventManagerImpl;
 import io.milton.http.*;
+import io.milton.http.annotated.AnnotationResourceFactory;
+import io.milton.http.annotated.AnnotationResourceFactory.AnnotationsDisplayNameFormatter;
 import io.milton.http.entity.DefaultEntityTransport;
 import io.milton.http.entity.EntityTransport;
 import io.milton.http.fck.FckResourceFactory;
@@ -34,12 +37,16 @@ import io.milton.http.http11.*;
 import io.milton.http.http11.DefaultHttp11ResponseHandler.BUFFERING;
 import io.milton.http.http11.auth.*;
 import io.milton.http.http11.auth.LoginResponseHandler.LoginPageTypeHandler;
+import io.milton.http.json.JsonPropFindHandler;
+import io.milton.http.json.JsonPropPatchHandler;
 import io.milton.http.json.JsonResourceFactory;
 import io.milton.http.quota.QuotaDataAccessor;
 import io.milton.http.values.ValueWriters;
 import io.milton.http.webdav.*;
 import io.milton.property.*;
 import java.io.File;
+import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -83,6 +90,7 @@ public class HttpManagerBuilder {
 	protected FileContentService fileContentService = new SimpleFileContentService(); // Used for FileSystemResourceFactory
 	protected DefaultHttp11ResponseHandler.BUFFERING buffering;
 	protected List<AuthenticationHandler> authenticationHandlers;
+	protected List<AuthenticationHandler> extraAuthenticationHandlers;
 	protected List<AuthenticationHandler> cookieDelegateHandlers;
 	protected DigestAuthenticationHandler digestHandler;
 	protected BasicAuthHandler basicHandler;
@@ -96,12 +104,14 @@ public class HttpManagerBuilder {
 	protected List<Stoppable> shutdownHandlers = new CopyOnWriteArrayList<Stoppable>();
 	protected ResourceTypeHelper resourceTypeHelper;
 	protected WebDavResponseHandler webdavResponseHandler;
+	// when wrapping a given response handler, this will be a reference to the outer most instance. or same as main response handler when not wrapping
+	protected WebDavResponseHandler outerWebdavResponseHandler;
 	protected ContentGenerator contentGenerator = new SimpleContentGenerator();
 	protected CacheControlHelper cacheControlHelper = new DefaultCacheControlHelper();
 	protected HandlerHelper handlerHelper;
 	protected ArrayList<HttpExtension> protocols;
 	protected ProtocolHandlers protocolHandlers;
-	protected EntityTransport entityTransport = new DefaultEntityTransport();
+	protected EntityTransport entityTransport;
 	protected EventManager eventManager = new EventManagerImpl();
 	protected PropertyAuthoriser propertyAuthoriser;
 	protected List<PropertySource> propertySources;
@@ -139,11 +149,35 @@ public class HttpManagerBuilder {
 	protected boolean multiNamespaceCustomPropertySourceEnabled = true;
 	protected BeanPropertySource beanPropertySource;
 	protected WebDavProtocol webDavProtocol;
+	protected DisplayNameFormatter displayNameFormatter = new DefaultDisplayNameFormatter();
 	protected boolean webdavEnabled = true;
 	protected MatchHelper matchHelper;
 	protected PartialGetHelper partialGetHelper;
 	protected LoginResponseHandler loginResponseHandler;
 	protected LoginResponseHandler.LoginPageTypeHandler loginPageTypeHandler = new LoginResponseHandler.ContentTypeLoginPageTypeHandler();
+	protected boolean enableExpectContinue = false;
+	protected String controllerPackagesToScan;
+	protected String controlleClassNames;
+	private Long maxAgeSeconds = 10l;
+	private String fsHomeDir = null;
+	private PropFindRequestFieldParser propFindRequestFieldParser;
+	private PropFindPropertyBuilder propFindPropertyBuilder;
+
+	protected io.milton.http.SecurityManager securityManager() {
+		if (securityManager == null) {
+			if (mapOfNameAndPasswords == null) {
+				mapOfNameAndPasswords = new HashMap<String, String>();
+				mapOfNameAndPasswords.put(defaultUser, defaultPassword);
+				log.info("Configuring default user and password: " + defaultUser + "/" + defaultPassword + " for SimpleSecurityManager");
+			}
+			if (fsRealm == null) {
+				fsRealm = "milton";
+			}
+			securityManager = new SimpleSecurityManager(fsRealm, mapOfNameAndPasswords);
+		}
+		log.info("Using securityManager: " + securityManager.getClass());
+		return securityManager;
+	}
 
 	/**
 	 * This method creates instances of required objects which have not been set
@@ -165,20 +199,16 @@ public class HttpManagerBuilder {
 			}
 		}
 
+
 		if (mainResourceFactory == null) {
-			rootDir = new File(System.getProperty("user.home"));
+			if (fsHomeDir == null) {
+				fsHomeDir = System.getProperty("user.home");
+			}
+			rootDir = new File(fsHomeDir);
 			if (!rootDir.exists() || !rootDir.isDirectory()) {
-				throw new RuntimeException("Root directory is not valie: " + rootDir.getAbsolutePath());
+				throw new RuntimeException("Root directory is not valid: " + rootDir.getAbsolutePath());
 			}
-			if (securityManager == null) {
-				if (mapOfNameAndPasswords == null) {
-					mapOfNameAndPasswords = new HashMap<String, String>();
-					mapOfNameAndPasswords.put(defaultUser, defaultPassword);
-				}
-				securityManager = new SimpleSecurityManager(fsRealm, mapOfNameAndPasswords);
-			}
-			log.info("Using securityManager: " + securityManager.getClass());
-			FileSystemResourceFactory fsResourceFactory = new FileSystemResourceFactory(rootDir, securityManager, fsContextPath);
+			FileSystemResourceFactory fsResourceFactory = new FileSystemResourceFactory(rootDir, securityManager(), fsContextPath);
 			fsResourceFactory.setContentService(fileContentService);
 			mainResourceFactory = fsResourceFactory;
 			log.info("Using file system with root directory: " + rootDir.getAbsolutePath());
@@ -219,14 +249,23 @@ public class HttpManagerBuilder {
 				if (formAuthenticationHandler != null) {
 					authenticationHandlers.add(formAuthenticationHandler);
 				}
+				if (extraAuthenticationHandlers != null && !extraAuthenticationHandlers.isEmpty()) {
+					log.info("Adding extra auth handlers: " + extraAuthenticationHandlers.size());
+					authenticationHandlers.addAll(extraAuthenticationHandlers);
+				}
 				if (cookieAuthenticationHandler == null) {
 					if (enableCookieAuth) {
 						if (cookieDelegateHandlers == null) {
 							// Don't add digest!
+							// why not???
 							cookieDelegateHandlers = new ArrayList<AuthenticationHandler>();
 							if (basicHandler != null) {
 								cookieDelegateHandlers.add(basicHandler);
 								authenticationHandlers.remove(basicHandler);
+							}
+							if (digestHandler != null) {
+								cookieDelegateHandlers.add(digestHandler);
+								authenticationHandlers.remove(digestHandler);
 							}
 							if (formAuthenticationHandler != null) {
 								cookieDelegateHandlers.add(formAuthenticationHandler);
@@ -250,35 +289,43 @@ public class HttpManagerBuilder {
 		if (resourceTypeHelper == null) {
 			buildResourceTypeHelper();
 		}
+		if (propFindXmlGenerator == null) {
+			propFindXmlGenerator = new PropFindXmlGenerator(valueWriters);
+			showLog("propFindXmlGenerator", propFindXmlGenerator);
+		}
+		if (http11ResponseHandler == null) {
+			DefaultHttp11ResponseHandler rh = createDefaultHttp11ResponseHandler(authenticationService);
+			rh.setContentGenerator(contentGenerator);
+			rh.setCacheControlHelper(cacheControlHelper);
+			rh.setBuffering(buffering);
+			http11ResponseHandler = rh;
+			showLog("http11ResponseHandler", http11ResponseHandler);
+		}
 
 		if (webdavResponseHandler == null) {
-			if (propFindXmlGenerator == null) {
-				propFindXmlGenerator = new PropFindXmlGenerator(valueWriters);
-				showLog("propFindXmlGenerator", propFindXmlGenerator);
-			}
-			if (http11ResponseHandler == null) {
-				DefaultHttp11ResponseHandler rh = new DefaultHttp11ResponseHandler(authenticationService, eTagGenerator);
-				rh.setContentGenerator(contentGenerator);
-				rh.setCacheControlHelper(cacheControlHelper);
-				http11ResponseHandler = rh;
-				showLog("http11ResponseHandler", http11ResponseHandler);
-			}
 			webdavResponseHandler = new DefaultWebDavResponseHandler(http11ResponseHandler, resourceTypeHelper, propFindXmlGenerator);
-			if (enableCompression) {
-				webdavResponseHandler = new CompressingResponseHandler(webdavResponseHandler);
-				showLog("webdavResponseHandler", webdavResponseHandler);
-			}
-			if (enableFormAuth) {
-				log.info("form authentication is enabled, so wrap response handler with " + LoginResponseHandler.class);
-				if (loginResponseHandler == null) {
-					loginResponseHandler = new LoginResponseHandler(webdavResponseHandler, mainResourceFactory, loginPageTypeHandler);
-					loginResponseHandler.setExcludePaths(loginPageExcludePaths);
-					loginResponseHandler.setLoginPage(loginPage);
-					webdavResponseHandler = loginResponseHandler;
-				}
+		}
+		outerWebdavResponseHandler = webdavResponseHandler;
+		if (enableCompression) {
+			final CompressingResponseHandler compressingResponseHandler = new CompressingResponseHandler(webdavResponseHandler);
+			compressingResponseHandler.setBuffering(buffering);
+			outerWebdavResponseHandler = compressingResponseHandler;
+			showLog("webdavResponseHandler", webdavResponseHandler);
+		}
+		if (enableFormAuth) {
+			log.info("form authentication is enabled, so wrap response handler with " + LoginResponseHandler.class);
+			if (loginResponseHandler == null) {
+				loginResponseHandler = new LoginResponseHandler(outerWebdavResponseHandler, mainResourceFactory, loginPageTypeHandler);
+				loginResponseHandler.setExcludePaths(loginPageExcludePaths);
+				loginResponseHandler.setLoginPage(loginPage);
+				outerWebdavResponseHandler = loginResponseHandler;
 			}
 		}
-		init(authenticationService, webdavResponseHandler, resourceTypeHelper);
+
+		init(authenticationService, outerWebdavResponseHandler, resourceTypeHelper);
+		initAnnotatedResourceFactory();
+
+		afterInit();
 	}
 
 	private void init(AuthenticationService authenticationService, WebDavResponseHandler webdavResponseHandler, ResourceTypeHelper resourceTypeHelper) {
@@ -287,8 +334,14 @@ public class HttpManagerBuilder {
 			handlerHelper = new HandlerHelper(authenticationService);
 			showLog("handlerHelper", handlerHelper);
 		}
+		if (!enableExpectContinue) {
+			log.info("ExpectContinue support has been disabled");
+		} else {
+			log.info("ExpectContinue is enabled. This can cause problems on most servlet containers with clients such as CyberDuck");
+		}
+		handlerHelper.setEnableExpectContinue(enableExpectContinue);
 		if (resourceHandlerHelper == null) {
-			resourceHandlerHelper = new ResourceHandlerHelper(handlerHelper, urlAdapter, webdavResponseHandler);
+			resourceHandlerHelper = new ResourceHandlerHelper(handlerHelper, urlAdapter, webdavResponseHandler, authenticationService);
 			showLog("resourceHandlerHelper", resourceHandlerHelper);
 		}
 		buildProtocolHandlers(webdavResponseHandler, resourceTypeHelper);
@@ -310,6 +363,9 @@ public class HttpManagerBuilder {
 				l.afterInit(this);
 			}
 		}
+		if (entityTransport == null) {
+			entityTransport = new DefaultEntityTransport(userAgentHelper());
+		}
 		HttpManager httpManager = new HttpManager(outerResourceFactory, webdavResponseHandler, protocolHandlers, entityTransport, filters, eventManager, shutdownHandlers);
 		if (listeners != null) {
 			for (InitListener l : listeners) {
@@ -324,6 +380,13 @@ public class HttpManagerBuilder {
 		}
 
 		return httpManager;
+	}
+
+	/**
+	 * Overridable method called after init but before build
+	 *
+	 */
+	protected void afterInit() {
 	}
 
 	protected PropertyAuthoriser initPropertyAuthoriser() {
@@ -359,6 +422,95 @@ public class HttpManagerBuilder {
 		return beanPropertySource;
 	}
 
+	protected DefaultHttp11ResponseHandler createDefaultHttp11ResponseHandler(AuthenticationService authenticationService) {
+		DefaultHttp11ResponseHandler rh = new DefaultHttp11ResponseHandler(authenticationService, eTagGenerator);
+		return rh;
+	}
+
+	protected void buildResourceTypeHelper() {
+		WebDavResourceTypeHelper webDavResourceTypeHelper = new WebDavResourceTypeHelper();
+		resourceTypeHelper = webDavResourceTypeHelper;
+		showLog("resourceTypeHelper", resourceTypeHelper);
+	}
+
+	protected void buildProtocolHandlers(WebDavResponseHandler webdavResponseHandler, ResourceTypeHelper resourceTypeHelper) {
+		if (protocols == null) {
+			protocols = new ArrayList<HttpExtension>();
+
+			if (matchHelper == null) {
+				matchHelper = new MatchHelper(eTagGenerator);
+			}
+			if (partialGetHelper == null) {
+				partialGetHelper = new PartialGetHelper(webdavResponseHandler);
+			}
+
+			Http11Protocol http11Protocol = new Http11Protocol(webdavResponseHandler, handlerHelper, resourceHandlerHelper, enableOptionsAuth, matchHelper, partialGetHelper);
+			protocols.add(http11Protocol);
+			if (propertySources == null) {
+				propertySources = initDefaultPropertySources(resourceTypeHelper);
+				showLog("propertySources", propertySources);
+			}
+			if (extraPropertySources != null) {
+				for (PropertySource ps : extraPropertySources) {
+					log.info("Add extra property source: " + ps.getClass());
+					propertySources.add(ps);
+				}
+			}
+
+			initWebdavProtocol();
+			if (webDavProtocol != null) {
+				protocols.add(webDavProtocol);
+			}
+		}
+
+		if (protocolHandlers == null) {
+			protocolHandlers = new ProtocolHandlers(protocols);
+		}
+	}
+
+	protected void initWebdavProtocol() {
+		if (propPatchSetter == null) {
+			propPatchSetter = new PropertySourcePatchSetter(propertySources);
+		}
+		if (propFindRequestFieldParser == null) {
+			DefaultPropFindRequestFieldParser defaultFieldParse = new DefaultPropFindRequestFieldParser();
+			this.propFindRequestFieldParser = new MsPropFindRequestFieldParser(defaultFieldParse); // use MS decorator for windows support				
+		}
+		if (webDavProtocol == null && webdavEnabled) {
+			webDavProtocol = new WebDavProtocol(handlerHelper, resourceTypeHelper, webdavResponseHandler, propertySources, quotaDataAccessor, propPatchSetter, initPropertyAuthoriser(), eTagGenerator, urlAdapter, resourceHandlerHelper, userAgentHelper(), propFindRequestFieldParser(), propFindPropertyBuilder());
+		}
+	}
+
+	protected PropFindRequestFieldParser propFindRequestFieldParser() {
+		if (propFindRequestFieldParser == null) {
+			DefaultPropFindRequestFieldParser defaultFieldParse = new DefaultPropFindRequestFieldParser();
+			this.propFindRequestFieldParser = new MsPropFindRequestFieldParser(defaultFieldParse); // use MS decorator for windows support				
+		}
+		return propFindRequestFieldParser;
+	}
+
+	protected void buildOuterResourceFactory() {
+		// wrap the real (ie main) resource factory to provide well-known support and ajax gateway
+		if (outerResourceFactory == null) {
+			outerResourceFactory = mainResourceFactory; // in case nothing else enabled
+			if (enabledJson) {
+				outerResourceFactory = buildJsonResourceFactory();
+				log.info("Enabled json/ajax gatewayw with: " + outerResourceFactory.getClass());
+			}
+			if (enabledCkBrowser) {
+				outerResourceFactory = new FckResourceFactory(outerResourceFactory);
+				log.info("Enabled CK Editor support with: " + outerResourceFactory.getClass());
+			}
+		}
+	}
+
+	protected JsonResourceFactory buildJsonResourceFactory() {
+		JsonPropFindHandler jsonPropFindHandler = new JsonPropFindHandler(propFindPropertyBuilder());
+		JsonPropPatchHandler jsonPropPatchHandler = new JsonPropPatchHandler(propPatchSetter, initPropertyAuthoriser(), eventManager);
+		return new JsonResourceFactory(outerResourceFactory, eventManager, jsonPropFindHandler, jsonPropPatchHandler);
+
+	}
+
 	public BUFFERING getBuffering() {
 		return buffering;
 	}
@@ -381,6 +533,20 @@ public class HttpManagerBuilder {
 
 	public void setAuthenticationHandlers(List<AuthenticationHandler> authenticationHandlers) {
 		this.authenticationHandlers = authenticationHandlers;
+	}
+
+	/**
+	 * You can add some extra auth handlers here, which will be added to the
+	 * default auth handler structure such as basic, digest and cookie.
+	 *
+	 * @return
+	 */
+	public List<AuthenticationHandler> getExtraAuthenticationHandlers() {
+		return extraAuthenticationHandlers;
+	}
+
+	public void setExtraAuthenticationHandlers(List<AuthenticationHandler> extraAuthenticationHandlers) {
+		this.extraAuthenticationHandlers = extraAuthenticationHandlers;
 	}
 
 	/**
@@ -963,67 +1129,179 @@ public class HttpManagerBuilder {
 		this.contentGenerator = contentGenerator;
 	}
 
-	protected void buildResourceTypeHelper() {
-		WebDavResourceTypeHelper webDavResourceTypeHelper = new WebDavResourceTypeHelper();
-		resourceTypeHelper = webDavResourceTypeHelper;
-		showLog("resourceTypeHelper", resourceTypeHelper);
+	public void setEnableExpectContinue(boolean enableExpectContinue) {
+		this.enableExpectContinue = enableExpectContinue;
 	}
 
-	protected void buildProtocolHandlers(WebDavResponseHandler webdavResponseHandler, ResourceTypeHelper resourceTypeHelper) {
-		if (protocols == null) {
-			protocols = new ArrayList<HttpExtension>();
+	/**
+	 * If true milton will response to Expect: Continue requests. This can
+	 * cause a problem on some web servers
+	 * 
+	 * @return 
+	 */
+	public boolean isEnableExpectContinue() {
+		return enableExpectContinue;
+	}
 
-			if (matchHelper == null) {
-				matchHelper = new MatchHelper(eTagGenerator);
-			}
-			if (partialGetHelper == null) {
-				partialGetHelper = new PartialGetHelper(webdavResponseHandler);
-			}
+	public WebDavResponseHandler getOuterWebdavResponseHandler() {
+		return outerWebdavResponseHandler;
+	}
 
-			Http11Protocol http11Protocol = new Http11Protocol(webdavResponseHandler, handlerHelper, resourceHandlerHelper, enableOptionsAuth, matchHelper, partialGetHelper);
-			protocols.add(http11Protocol);
-			if (propertySources == null) {
-				propertySources = initDefaultPropertySources(resourceTypeHelper);
-				showLog("propertySources", propertySources);
-			}
-			if (extraPropertySources != null) {
-				for (PropertySource ps : extraPropertySources) {
-					log.info("Add extra property source: " + ps.getClass());
-					propertySources.add(ps);
+	/**
+	 * If not null, is expected to be a comma seperated list of package names. These
+	 * will be scanned for classes which contain classes annotated with ResourceController,
+	 * and those found will be added to the controllers list
+	 * 
+	 * @return 
+	 */
+	public String getControllerPackagesToScan() {
+		return controllerPackagesToScan;
+	}
+
+	public void setControllerPackagesToScan(String controllerPackagesToScan) {
+		this.controllerPackagesToScan = controllerPackagesToScan;
+	}
+
+	/**
+	 * As an alternative to package scanning via the controllerPackagesToScan property,
+	 * set this property to a comma seperated list of class names. These will be
+	 * loaded and checked for the ResourceController annotation, and if present,
+	 * will be added to the controllers list
+	 * 
+	 * @return 
+	 */
+	public String getControlleClassNames() {
+		return controlleClassNames;
+	}
+
+	public void setControlleClassNames(String controlleClassNames) {
+		this.controlleClassNames = controlleClassNames;
+	}
+
+	/**
+	 * Default max-age to use for certain resource types which can use a default value
+	 * 
+	 * @return 
+	 */
+	public Long getMaxAgeSeconds() {
+		return maxAgeSeconds;
+	}
+
+	public void setMaxAgeSeconds(Long maxAgeSeconds) {
+		this.maxAgeSeconds = maxAgeSeconds;
+	}
+
+	public DisplayNameFormatter getDisplayNameFormatter() {
+		return displayNameFormatter;
+	}
+
+	public void setDisplayNameFormatter(DisplayNameFormatter displayNameFormatter) {
+		this.displayNameFormatter = displayNameFormatter;
+	}
+
+	/**
+	 * Set this if you're using the FileSystemResourceFactory and you want to
+	 * explicitly set a home directory. If left null milton will use the
+	 * user.home System property
+	 *
+	 * @return
+	 */
+	public String getFsHomeDir() {
+		return fsHomeDir;
+	}
+
+	public void setFsHomeDir(String fsHomeDir) {
+		this.fsHomeDir = fsHomeDir;
+	}
+
+	public PropFindPropertyBuilder getPropFindPropertyBuilder() {
+		return propFindPropertyBuilder;
+	}
+
+	public void setPropFindPropertyBuilder(PropFindPropertyBuilder propFindPropertyBuilder) {
+		this.propFindPropertyBuilder = propFindPropertyBuilder;
+	}
+
+	public PropFindRequestFieldParser getPropFindRequestFieldParser() {
+		return propFindRequestFieldParser;
+	}
+
+	public void setPropFindRequestFieldParser(PropFindRequestFieldParser propFindRequestFieldParser) {
+		this.propFindRequestFieldParser = propFindRequestFieldParser;
+	}
+
+	private void initAnnotatedResourceFactory() {
+		try {
+			if (getMainResourceFactory() instanceof AnnotationResourceFactory) {
+				AnnotationResourceFactory arf = (AnnotationResourceFactory) getMainResourceFactory();
+				if (arf.getControllers() == null) {
+					List controllers = new ArrayList();
+					if (controllerPackagesToScan != null) {
+						for (String packageName : controllerPackagesToScan.split(",")) {
+							packageName = packageName.trim();
+							log.info("init annotations controllers from package: " + packageName);
+							List<Class> classes = ReflectionUtils.getClassNamesFromPackage(packageName);
+							for (Class c : classes) {
+								Annotation a = c.getAnnotation(ResourceController.class);
+								if (a != null) {
+									Object controller = c.newInstance();
+									controllers.add(controller);
+								}
+							}
+						}
+					}
+					if (controlleClassNames != null) {
+						for (String className : controlleClassNames.split(",")) {
+							className = className.trim();
+							log.info("init annotation controller: " + className);
+							Class c = ReflectionUtils.loadClass(className);
+							Annotation a = c.getAnnotation(ResourceController.class);
+							if (a != null) {
+								Object controller = c.newInstance();
+								controllers.add(controller);
+							} else {
+								log.warn("No " + ResourceController.class + " annotation on class: " + c.getCanonicalName() + " provided in controlleClassNames");
+							}
+						}
+
+					}
+					arf.setControllers(controllers);
 				}
-			}
-			if (propPatchSetter == null) {
-				propPatchSetter = new PropertySourcePatchSetter(propertySources);
-			}
-			if (userAgentHelper == null) {
-				userAgentHelper = new DefaultUserAgentHelper();
-			}
 
-			if (webDavProtocol == null && webdavEnabled) {
-				webDavProtocol = new WebDavProtocol(handlerHelper, resourceTypeHelper, webdavResponseHandler, propertySources, quotaDataAccessor, propPatchSetter, initPropertyAuthoriser(), eTagGenerator, urlAdapter, resourceHandlerHelper, userAgentHelper);
+				if (arf.getMaxAgeSeconds() == null) {
+					arf.setMaxAgeSeconds(maxAgeSeconds);
+				}
+				if (arf.getSecurityManager() == null) {
+					// init the default, statically configured sm
+					arf.setSecurityManager(securityManager());
+				}
+				setDisplayNameFormatter(arf.new AnnotationsDisplayNameFormatter(getDisplayNameFormatter()));
 			}
-			if (webDavProtocol != null) {
-				protocols.add(webDavProtocol);
-			}
-		}
-
-		if (protocolHandlers == null) {
-			protocolHandlers = new ProtocolHandlers(protocols);
+		} catch (InstantiationException e) {
+			throw new RuntimeException("Exception initialising AnnotationResourceFactory", e);
+		} catch (IllegalAccessException e) {
+			throw new RuntimeException("Exception initialising AnnotationResourceFactory", e);
+		} catch (IOException e) {
+			throw new RuntimeException("Exception initialising AnnotationResourceFactory", e);
+		} catch (ClassNotFoundException e) {
+			throw new RuntimeException("Exception initialising AnnotationResourceFactory", e);
 		}
 	}
 
-	protected void buildOuterResourceFactory() {
-		// wrap the real (ie main) resource factory to provide well-known support and ajax gateway
-		if (outerResourceFactory == null) {
-			outerResourceFactory = mainResourceFactory; // in case nothing else enabled
-			if (enabledJson) {
-				outerResourceFactory = new JsonResourceFactory(outerResourceFactory, eventManager, propertySources, propPatchSetter, initPropertyAuthoriser());
-				log.info("Enabled json/ajax gatewayw with: " + outerResourceFactory.getClass());
-			}
-			if (enabledCkBrowser) {
-				outerResourceFactory = new FckResourceFactory(outerResourceFactory);
-				log.info("Enabled CK Editor support with: " + outerResourceFactory.getClass());
-			}
+	protected UserAgentHelper userAgentHelper() {
+		if (userAgentHelper == null) {
+			userAgentHelper = new DefaultUserAgentHelper();
 		}
+		return userAgentHelper;
+	}
+
+	protected PropFindPropertyBuilder propFindPropertyBuilder() {
+		if (propFindPropertyBuilder == null) {
+			if (propertySources == null) {
+				throw new RuntimeException("propertySources has not been initialised yet");
+			}
+			propFindPropertyBuilder = new DefaultPropFindPropertyBuilder(propertySources);
+		}
+		return propFindPropertyBuilder;
 	}
 }

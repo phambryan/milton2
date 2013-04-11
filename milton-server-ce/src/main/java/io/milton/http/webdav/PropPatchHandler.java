@@ -46,9 +46,12 @@ import io.milton.property.PropertyAuthoriser;
 import io.milton.event.PropPatchEvent;
 import io.milton.http.Request;
 import io.milton.http.Response;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.util.HashSet;
 import java.util.Set;
 import javax.xml.namespace.QName;
+import org.apache.commons.io.IOUtils;
 
 /**
  * Example request (from ms office)
@@ -221,7 +224,7 @@ public class PropPatchHandler implements ExistingEntityHandler, PropertyHandler 
             throw new NotAuthorizedException(resource);
         }
         String href = request.getAbsoluteUrl();
-		href = PropFindPropertyBuilder.fixUrlForWindows(href);
+		href = DefaultPropFindPropertyBuilder.fixUrlForWindows(href);
         PropFindResponse resp = patchSetter.setProperties(href, parseResult, resource);
         return resp;
     }

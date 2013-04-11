@@ -58,23 +58,21 @@ public class PropFindHandler implements ExistingEntityHandler, PropertyHandler {
     private final PropFindPropertyBuilder propertyBuilder;
     private final PropertyAuthoriser permissionService = new DefaultPropertyAuthoriser();
 
-    /**
-     * 
-     * @param resourceHandlerHelper
-     * @param resourceTypeHelper
-     * @param responseHandler
-     */
-    public PropFindHandler( ResourceHandlerHelper resourceHandlerHelper, ResourceTypeHelper resourceTypeHelper, WebDavResponseHandler responseHandler, List<PropertySource> propertySources ) {
-        this.resourceHandlerHelper = resourceHandlerHelper;
-
-        DefaultPropFindRequestFieldParser defaultFieldParse = new DefaultPropFindRequestFieldParser();
-        this.requestFieldParser = new MsPropFindRequestFieldParser( defaultFieldParse ); // use MS decorator for windows support
-        this.responseHandler = responseHandler;
-
-        this.propertyBuilder = new PropFindPropertyBuilder( propertySources );
-		
-		displayCopyrightNotice();
-    }
+//    /**
+//     * 
+//     * @param resourceHandlerHelper
+//     * @param resourceTypeHelper
+//     * @param responseHandler
+//     */
+//    public PropFindHandler( ResourceHandlerHelper resourceHandlerHelper, ResourceTypeHelper resourceTypeHelper, WebDavResponseHandler responseHandler, List<PropertySource> propertySources ) {
+//        this.resourceHandlerHelper = resourceHandlerHelper;
+//
+//        DefaultPropFindRequestFieldParser defaultFieldParse = new DefaultPropFindRequestFieldParser();
+//        this.requestFieldParser = new MsPropFindRequestFieldParser( defaultFieldParse ); // use MS decorator for windows support
+//        this.responseHandler = responseHandler;
+//
+//        this.propertyBuilder = new PropFindPropertyBuilder( propertySources );				
+//    }
 
     /**
      *
@@ -86,6 +84,9 @@ public class PropFindHandler implements ExistingEntityHandler, PropertyHandler {
     public PropFindHandler( ResourceHandlerHelper resourceHandlerHelper, PropFindRequestFieldParser requestFieldParser, WebDavResponseHandler responseHandler, PropFindPropertyBuilder propertyBuilder ) {
         this.resourceHandlerHelper = resourceHandlerHelper;
         this.requestFieldParser = requestFieldParser;
+		if( requestFieldParser == null ) {
+			throw new NullPointerException("Must provide a PropFindRequestFieldParser");
+		}
         this.responseHandler = responseHandler;
         this.propertyBuilder = propertyBuilder;
     }
@@ -137,6 +138,7 @@ public class PropFindHandler implements ExistingEntityHandler, PropertyHandler {
         } else {
             List<PropFindResponse> propFindResponses;
 			try {
+				System.out.println("build props");
 				propFindResponses = propertyBuilder.buildProperties( pfr, depth, parseResult, url );
 			} catch (URISyntaxException ex) {
 				log.error("Exception parsing url. request class: " + request.getClass() + ". Please check the client application is usign percentage encoding (see http://en.wikipedia.org/wiki/Percent-encoding)");
@@ -163,15 +165,4 @@ public class PropFindHandler implements ExistingEntityHandler, PropertyHandler {
     public PropertyAuthoriser getPermissionService() {
         return permissionService;
     }
-
-	/**
-	 * Display information about licensing. Implemented here because this is one
-	 * of the few classes in milton which is generally not replaceable.
-	 */
-	private void displayCopyrightNotice() {		
-		System.out.println("Initializing Milton2 ...");
-		System.out.println("This software has been released under the Affero GPL license which requires derivative works (the application using milton) to be published on the same license");
-		System.out.println("For non-FOSS/commercial usage you should obtain a commercial license. Please see http://milton.io/license for details");
-		System.out.println("Copyright McEvoy Software Limited");
-	}
 }
