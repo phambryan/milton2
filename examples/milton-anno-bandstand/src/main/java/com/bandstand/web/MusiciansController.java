@@ -61,7 +61,9 @@ public class MusiciansController {
     @ChildrenOf
     @Users // ties in with the @AccessControlList and @Authenticate methods below
     public List<Musician> getMusicians(MusiciansController root) {
-        return Musician.findAll(SessionManager.session());
+        List<Musician> list = Musician.findAll(SessionManager.session());
+        System.out.println("musicians=" + list.size());
+        return list;
     }
     
     @ChildOf
@@ -110,7 +112,11 @@ public class MusiciansController {
         if( target == currentUser ) {
             return AccessControlledResource.READ_WRITE;
         } else {
-            return AccessControlledResource.READ_CONTENT;
+            // This prevents read access to each others calendars
+            return null;
+            
+            // This gives read access to each others calendars
+            //return AccessControlledResource.READ_CONTENT;
         }
     }
     
