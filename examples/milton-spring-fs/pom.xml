@@ -7,12 +7,9 @@
         <version>2.4.2.7</version>
     </parent>
     <groupId>io.milton</groupId>
-    <artifactId>milton-ref</artifactId>
+    <artifactId>milton-spring-fs</artifactId>
     <packaging>war</packaging>
-    <name>Milton Reference implementiation</name>
-    <description>A complete web application which uses an in memory content database.
-        Demonstrates in a very simple manner how to implement most milton interfaces
-    </description>
+    <description>Just shows using the milton filesystem implementation using spring configuration</description>
     <build>
         <plugins>
             <plugin>
@@ -62,29 +59,10 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>1.3.2</version>
-        </dependency>
-        <dependency>
-            <groupId>commons-collections</groupId>
-            <artifactId>commons-collections</artifactId>
-            <version>3.2.1</version>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>cardme</artifactId>
-            <version>1.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>milton-mail-server</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>milton-client</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring</artifactId>
+            <version>2.5.6</version>
+            <type>jar</type>
+        </dependency>		
     </dependencies>
 </project>
