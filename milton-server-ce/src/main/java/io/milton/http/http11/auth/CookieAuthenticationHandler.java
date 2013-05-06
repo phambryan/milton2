@@ -27,7 +27,7 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 	private static final String HANDLER_ATT_NAME = "_delegatedAuthenticationHandler";
 	public static final int SECONDS_PER_YEAR = 60 * 60 * 24 * 365;
 	private String requestParamLogout = "miltonLogout";
-	private String cookieUserUrlValue = "miltonUserUrl"; // TODO: make this a HTTP Only cookie, to avoid XSS attacks
+	private String cookieUserUrlValue = "miltonUserUrl"; 
 	private String cookieUserUrlHash = "miltonUserUrlHash";
 	private final List<AuthenticationHandler> handlers;
 	private final ResourceFactory principalResourceFactory;
@@ -59,8 +59,9 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 		String userUrl = getUserUrl(request);
 
 		// check for a logout command, if so logout
-		if (isLogout(request)) {
-			if (userUrl != null && userUrl.length() > 0) {
+		if (isLogout(request)) {			
+			log.info("Is LogOut request, clear cookie");
+			if (userUrl != null && userUrl.length() > 0) {				
 				clearCookieValue(HttpManager.response());
 			}
 		}
@@ -246,10 +247,9 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 			userUrl = userUrl.trim();
 			if (userUrl.length() > 0) {
 				if (verifyHash(userUrl, request)) {
-
 					return userUrl;
 				} else {
-					log.error("Invalid userUrl hash, possible attempted hacking attempt");
+					log.error("Invalid userUrl hash, possible attempted hacking attempt. userUrl=" + userUrl);
 				}
 			}
 		}
@@ -270,18 +270,25 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 		if (signing == null) {
 			return false;
 		}
+		signing = signing.replace("\"", "");
 		signing = signing.trim();
 		if (signing.length() == 0) {
+			log.warn("cookie signature is not present in cookie: " + cookieUserUrlHash);
 			return false;
 		}
 		String[] arr = signing.split(":");
 		if (arr.length != 2) {
+			log.warn("cookie signature is not in a valid form. Should consist of 2 parts seperated by a colon. eg 123:abc. Given value=" + signing);
 			return false;
 		}
 		String salt = arr[0];
 		String hash = arr[1];
 		String expectedHash = DigestUtils.md5Hex(userUrl + ":" + salt);
-		return expectedHash.equals(hash);
+		boolean ok = expectedHash.equals(hash);
+		if( !ok ) {
+			log.warn("Cookie sig does not match expected. Given=" + hash + " Expected=" + expectedHash + "  salt=" + salt);
+		}
+		return ok;
 	}
 
 	private void setCookieValues(Response response, String userUrl, String hash) {
@@ -289,14 +296,16 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 		BeanCookie c = new BeanCookie(cookieUserUrlValue);
 		c.setValue(userUrl);
 		c.setPath("/");
+		c.setVersion(1);
 		if (useLongLivedCookies) {
 			c.setExpiry(SECONDS_PER_YEAR);
 		}
 		response.setCookie(c);
 
 		c = new BeanCookie(cookieUserUrlHash);
-		c.setValue(hash);
+		c.setValue("\"" + hash + "\"");
 		c.setHttpOnly(true); // http only so not accessible from JS. Helps prevent XSS attacks
+		c.setVersion(1);
 		c.setPath("/");
 		if (useLongLivedCookies) {
 			c.setExpiry(SECONDS_PER_YEAR);
@@ -305,6 +314,7 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 	}
 
 	private void clearCookieValue(Response response) {
+		log.info("clearCookieValue");
 		response.setCookie(cookieUserUrlValue, "");
 		response.setCookie(cookieUserUrlHash, "");
 	}

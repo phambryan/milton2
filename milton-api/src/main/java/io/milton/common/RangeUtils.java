@@ -40,7 +40,10 @@ public class RangeUtils {
             for (Range r : ranges) {
                 long skip = r.getStart() - pos;
                 bufIn.skip(skip);
-                long length = r.getFinish() - r.getStart();
+                Long length = r.getLength();
+                if (length == null) { // will return null if cant calculate
+                    throw new IOException("Unable to write range because either start or finish index are not provided: " + r);
+                }
                 sendBytes(bufIn, responseOut, length);
                 pos = r.getFinish();
             }
@@ -67,12 +70,19 @@ public class RangeUtils {
 
     public static void writeRange(InputStream in, Range r, OutputStream responseOut) throws IOException {
         if (r != null) {
-            long skip = r.getStart();
-            in.skip(skip);
-            long length = r.getFinish() - r.getStart();
-            sendBytes(in, responseOut, length);
+            if( r.getStart() != null ) {
+                long skip = r.getStart();
+                in.skip(skip);
+            }
+            if (r.getFinish() != null) {
+                long length = r.getFinish() - r.getStart() + 1;
+                sendBytes(in, responseOut, length);
+            } else {
+                IOUtils.copy(in, responseOut);
+            }
         } else {
             IOUtils.copy(in, responseOut);
         }
     }
+
 }
