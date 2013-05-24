@@ -7,8 +7,6 @@ package io.milton.http.caldav;
 import io.milton.http.webdav.ResourceTypeHelper;
 import io.milton.resource.CalendarResource;
 import io.milton.resource.ICalResource;
-import io.milton.resource.SchedulingInboxResource;
-import io.milton.resource.SchedulingOutboxResource;
 import io.milton.resource.CollectionResource;
 import io.milton.resource.Resource;
 import io.milton.webdav.utils.LockUtils;
@@ -87,18 +85,23 @@ public class CalendarResourceTypeHelper implements ResourceTypeHelper {
         List<String> list = wrapped.getSupportedLevels(r);
 //        if (r instanceof CalendarResource) {
         LockUtils.add(list, "3");
-        list.add("calendar-access");
+        LockUtils.add(list, "calendar-access");
         
         // if present (but not actually implemented) causes problems with thunderbird
         LockUtils.add(list, "calendar-schedule");
         LockUtils.add(list, "extended-mkcol");
         list.add("calendar-proxy");
 //        }
+        
+        // not sure if should be at this level
+        LockUtils.add(list, "calendar-auto-schedule");
         if (r instanceof SchedulingInboxResource) {
-            list.add("schedule-inbox");
+            LockUtils.add(list, "schedule-inbox");            
+            LockUtils.add(list, "calendar-auto-schedule");
         }
         if (r instanceof SchedulingOutboxResource) {
-            list.add("schedule-outbox");
+            LockUtils.add(list, "schedule-outbox");
+            LockUtils.add(list, "calendar-auto-schedule");
         }
         return list;
     }
