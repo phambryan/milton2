@@ -21,6 +21,7 @@ package io.milton.config;
 import io.milton.annotations.ResourceController;
 import io.milton.property.PropertySource;
 import io.milton.common.Stoppable;
+import io.milton.context.RootContext;
 import io.milton.event.EventManager;
 import io.milton.event.EventManagerImpl;
 import io.milton.http.*;
@@ -47,6 +48,10 @@ import io.milton.property.*;
 import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -54,6 +59,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Level;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -135,6 +142,7 @@ public class HttpManagerBuilder {
 	protected boolean enableFormAuth = true;
 	protected boolean enableCookieAuth = true;
 	protected boolean enabledCkBrowser = false;
+	protected boolean enableEarlyAuth = true;
 	protected String loginPage = "/login.html";
 	protected List<String> loginPageExcludePaths;
 	protected File rootDir = null;
@@ -158,10 +166,13 @@ public class HttpManagerBuilder {
 	protected boolean enableExpectContinue = false;
 	protected String controllerPackagesToScan;
 	protected String controllerClassNames;
+	protected List controllers = new ArrayList();
 	private Long maxAgeSeconds = 10l;
 	private String fsHomeDir = null;
 	private PropFindRequestFieldParser propFindRequestFieldParser;
 	private PropFindPropertyBuilder propFindPropertyBuilder;
+	private RootContext rootContext = new RootContext();
+	private List dependencies;
 
 	protected io.milton.http.SecurityManager securityManager() {
 		if (securityManager == null) {
@@ -176,6 +187,7 @@ public class HttpManagerBuilder {
 			securityManager = new SimpleSecurityManager(fsRealm, mapOfNameAndPasswords);
 		}
 		log.info("Using securityManager: " + securityManager.getClass());
+		rootContext.put(securityManager);
 		return securityManager;
 	}
 
@@ -199,6 +211,11 @@ public class HttpManagerBuilder {
 			}
 		}
 
+		if (dependencies != null) {
+			for (Object o : dependencies) {
+				rootContext.put(o);
+			}
+		}
 
 		if (mainResourceFactory == null) {
 			if (fsHomeDir == null) {
@@ -278,6 +295,10 @@ public class HttpManagerBuilder {
 				}
 			}
 			authenticationService = new AuthenticationService(authenticationHandlers);
+			rootContext.put(authenticationService);
+			if (cookieAuthenticationHandler != null) {
+				rootContext.put(cookieAuthenticationHandler);
+			}
 			showLog("authenticationService", authenticationService);
 		}
 
@@ -322,8 +343,8 @@ public class HttpManagerBuilder {
 			}
 		}
 
-		initAnnotatedResourceFactory();		
-		
+		initAnnotatedResourceFactory();
+
 		init(authenticationService, outerWebdavResponseHandler, resourceTypeHelper);
 
 		afterInit();
@@ -345,8 +366,10 @@ public class HttpManagerBuilder {
 			resourceHandlerHelper = new ResourceHandlerHelper(handlerHelper, urlAdapter, webdavResponseHandler, authenticationService);
 			showLog("resourceHandlerHelper", resourceHandlerHelper);
 		}
+		// Build stack of resource factories before protocols, because protocols use (so depend on)
+		// resource factories
+		buildOuterResourceFactory();		
 		buildProtocolHandlers(webdavResponseHandler, resourceTypeHelper);
-		buildOuterResourceFactory();
 		if (filters != null) {
 			filters = new ArrayList<Filter>(filters);
 		} else {
@@ -367,7 +390,7 @@ public class HttpManagerBuilder {
 		if (entityTransport == null) {
 			entityTransport = new DefaultEntityTransport(userAgentHelper());
 		}
-		HttpManager httpManager = new HttpManager(outerResourceFactory, webdavResponseHandler, protocolHandlers, entityTransport, filters, eventManager, shutdownHandlers);
+		HttpManager httpManager = new HttpManager(outerResourceFactory, outerWebdavResponseHandler, protocolHandlers, entityTransport, filters, eventManager, shutdownHandlers);
 		if (listeners != null) {
 			for (InitListener l : listeners) {
 				l.afterBuild(this, httpManager);
@@ -401,7 +424,10 @@ public class HttpManagerBuilder {
 	}
 
 	protected List<PropertySource> initDefaultPropertySources(ResourceTypeHelper resourceTypeHelper) {
-		List<PropertySource> list = new ArrayList<PropertySource>();
+		if( propertySources == null ) {
+			throw new RuntimeException("I actually expected propertySources to be created by now and set into the PropfindPropertyBuilder ");
+		}
+		List<PropertySource> list = propertySources;
 		if (multiNamespaceCustomPropertySource == null) {
 			if (multiNamespaceCustomPropertySourceEnabled) {
 				multiNamespaceCustomPropertySource = new MultiNamespaceCustomPropertySource();
@@ -447,10 +473,7 @@ public class HttpManagerBuilder {
 
 			Http11Protocol http11Protocol = new Http11Protocol(webdavResponseHandler, handlerHelper, resourceHandlerHelper, enableOptionsAuth, matchHelper, partialGetHelper);
 			protocols.add(http11Protocol);
-			if (propertySources == null) {
-				propertySources = initDefaultPropertySources(resourceTypeHelper);
-				showLog("propertySources", propertySources);
-			}
+			propertySources = initDefaultPropertySources(resourceTypeHelper);
 			if (extraPropertySources != null) {
 				for (PropertySource ps : extraPropertySources) {
 					log.info("Add extra property source: " + ps.getClass());
@@ -1160,6 +1183,9 @@ public class HttpManagerBuilder {
 	}
 
 	public void setControllerPackagesToScan(String controllerPackagesToScan) {
+		if (mainResourceFactory == null && controllerPackagesToScan != null) {
+			mainResourceFactory = new AnnotationResourceFactory();
+		}
 		this.controllerPackagesToScan = controllerPackagesToScan;
 	}
 
@@ -1176,7 +1202,27 @@ public class HttpManagerBuilder {
 	}
 
 	public void setControllerClassNames(String controlleClassNames) {
+		if (mainResourceFactory == null && controlleClassNames != null) {
+			mainResourceFactory = new AnnotationResourceFactory();
+		}
 		this.controllerClassNames = controlleClassNames;
+	}
+
+	/**
+	 * Instead of setting controller packages to scan or controller class names,
+	 * you can set a list of actual controller instances
+	 *
+	 * @return
+	 */
+	public List getControllers() {
+		return controllers;
+	}
+
+	public void setControllers(List controllers) {
+		if (mainResourceFactory == null && controllers != null) {
+			mainResourceFactory = new AnnotationResourceFactory();
+		}
+		this.controllers = controllers;
 	}
 
 	/**
@@ -1233,11 +1279,27 @@ public class HttpManagerBuilder {
 	}
 
 	private void initAnnotatedResourceFactory() {
+		log.info("initAnnotatedResourceFactory");
 		try {
 			if (getMainResourceFactory() instanceof AnnotationResourceFactory) {
 				AnnotationResourceFactory arf = (AnnotationResourceFactory) getMainResourceFactory();
+				arf.setDoEarlyAuth(enableEarlyAuth);
+				log.info("enableEarlyAuth=" + enableEarlyAuth);
+				if (enableEarlyAuth) {
+					if (arf.getAuthenticationService() == null) {
+						if( authenticationService == null ) {
+							// Just defensive check
+							throw new RuntimeException("enableEarlyAuth is true, but not authenticationService is available");
+						} else {
+							log.info("Enabled early authentication for annotations resources");
+						}
+						arf.setAuthenticationService(authenticationService);
+					}
+				}
 				if (arf.getControllers() == null) {
-					List controllers = new ArrayList();
+					if (controllers == null) {
+						controllers = new ArrayList();
+					}
 					if (controllerPackagesToScan != null) {
 						log.info("Scan for controller classes: " + controllerPackagesToScan);
 						for (String packageName : controllerPackagesToScan.split(",")) {
@@ -1247,7 +1309,7 @@ public class HttpManagerBuilder {
 							for (Class c : classes) {
 								Annotation a = c.getAnnotation(ResourceController.class);
 								if (a != null) {
-									Object controller = c.newInstance();
+									Object controller = createObject(c);
 									controllers.add(controller);
 								}
 							}
@@ -1261,14 +1323,14 @@ public class HttpManagerBuilder {
 							Class c = ReflectionUtils.loadClass(className);
 							Annotation a = c.getAnnotation(ResourceController.class);
 							if (a != null) {
-								Object controller = c.newInstance();
+								Object controller = createObject(c);
 								controllers.add(controller);
 							} else {
 								log.warn("No " + ResourceController.class + " annotation on class: " + c.getCanonicalName() + " provided in controlleClassNames");
 							}
 						}
-
 					}
+
 					if (controllers.isEmpty()) {
 						log.warn("No controllers found in controllerClassNames=" + controllerClassNames + "  or controllerPackagesToScan=" + controllerPackagesToScan);
 					}
@@ -1284,9 +1346,7 @@ public class HttpManagerBuilder {
 				}
 				setDisplayNameFormatter(arf.new AnnotationsDisplayNameFormatter(getDisplayNameFormatter()));
 			}
-		} catch (InstantiationException e) {
-			throw new RuntimeException("Exception initialising AnnotationResourceFactory", e);
-		} catch (IllegalAccessException e) {
+		} catch (CreationException e) {
 			throw new RuntimeException("Exception initialising AnnotationResourceFactory", e);
 		} catch (IOException e) {
 			throw new RuntimeException("Exception initialising AnnotationResourceFactory", e);
@@ -1305,10 +1365,154 @@ public class HttpManagerBuilder {
 	protected PropFindPropertyBuilder propFindPropertyBuilder() {
 		if (propFindPropertyBuilder == null) {
 			if (propertySources == null) {
-				throw new RuntimeException("propertySources has not been initialised yet");
+				propertySources = new ArrayList<PropertySource>();
 			}
 			propFindPropertyBuilder = new DefaultPropFindPropertyBuilder(propertySources);
 		}
 		return propFindPropertyBuilder;
+	}
+
+	public RootContext getRootContext() {
+		return rootContext;
+	}
+
+	/**
+	 * Just a list of objects to be made available to auto-created objects via
+	 * injection
+	 *
+	 * @return
+	 */
+	public List getDependencies() {
+		return dependencies;
+	}
+
+	public void setDependencies(List dependencies) {
+		this.dependencies = dependencies;
+	}
+
+	private Object createObject(Class c) throws CreationException {
+		log.info("createObject: " + c.getCanonicalName());
+		// Look for an @Inject or default construcctor
+		Constructor found = null;
+
+		for (Constructor con : c.getConstructors()) {
+			Annotation[][] paramTypes = con.getParameterAnnotations();
+			if (paramTypes != null && paramTypes.length > 0) {
+				Annotation inject = con.getAnnotation(Inject.class);
+				if (inject != null) {
+					found = con;
+				}
+			} else {
+				found = con;
+			}
+		}
+		if (found == null) {
+			throw new RuntimeException("Could not find a default or @Inject constructor for class: " + c.getCanonicalName());
+		}
+		Object args[] = new Object[found.getParameterTypes().length];
+		int i = 0;
+		for (Class paramType : found.getParameterTypes()) {
+			try {
+				args[i++] = findOrCreateObject(paramType);
+			} catch (CreationException ex) {
+				throw new CreationException(c, ex);
+			}
+		}
+		Object created;
+		try {
+			log.info("Creating: " + c.getCanonicalName());
+			created = found.newInstance(args);
+			rootContext.put(created);
+		} catch (InstantiationException ex) {
+			throw new CreationException(c, ex);
+		} catch (IllegalAccessException ex) {
+			throw new CreationException(c, ex);
+		} catch (IllegalArgumentException ex) {
+			throw new CreationException(c, ex);
+		} catch (InvocationTargetException ex) {
+			throw new CreationException(c, ex);
+		}
+		// Now look for @Inject fields
+		for (Field field : c.getDeclaredFields()) {
+			Inject anno = field.getAnnotation(Inject.class);
+			if (anno != null) {
+				boolean acc = field.isAccessible();
+				try {
+					field.setAccessible(true);
+					field.set(created, findOrCreateObject(field.getType()));
+				} catch (IllegalArgumentException ex) {
+					throw new CreationException(field, c, ex);
+				} catch (IllegalAccessException ex) {
+					throw new CreationException(field, c, ex);
+				} finally {
+					field.setAccessible(acc); // put back the way it was
+				}
+			}
+		}
+
+		// Finally set any @Inject methods
+		for (Method m : c.getMethods()) {
+			Inject anno = m.getAnnotation(Inject.class);
+			if (anno != null) {
+				Object[] methodArgs = new Object[m.getParameterTypes().length];
+				int ii = 0;
+				try {
+					for (Class<?> paramType : m.getParameterTypes()) {
+						methodArgs[ii++] = findOrCreateObject(paramType);
+					}
+					m.invoke(created, methodArgs);
+				} catch (CreationException creationException) {
+					throw new CreationException(m, c, creationException);
+				} catch (IllegalAccessException ex) {
+					throw new CreationException(m, c, ex);
+				} catch (IllegalArgumentException ex) {
+					throw new CreationException(m, c, ex);
+				} catch (InvocationTargetException ex) {
+					throw new CreationException(m, c, ex);
+				}
+			}
+		}
+		if (created instanceof InitListener) {
+			if (listeners == null) {
+				listeners = new ArrayList<InitListener>();
+			}
+			InitListener l = (InitListener) created;
+			l.beforeInit(this); // better late then never!!
+			listeners.add(l);
+		}
+		return created;
+	}
+
+	private Object findOrCreateObject(Class c) throws CreationException {
+		Object o = rootContext.get(c);
+		if (o == null) {
+			o = createObject(c);
+		}
+		return o;
+
+	}
+
+	public class CreationException extends Exception {
+
+		private final Class attemptedToCreate;
+
+		public CreationException(Class attemptedToCreate, Throwable cause) {
+			super("Exception creating: " + attemptedToCreate.getCanonicalName(), cause);
+			this.attemptedToCreate = attemptedToCreate;
+		}
+
+		public CreationException(Field field, Class attemptedToCreate, Throwable cause) {
+			super("Exception setting field: " + field.getName() + " on " + attemptedToCreate.getCanonicalName(), cause);
+			this.attemptedToCreate = attemptedToCreate;
+		}
+
+		public CreationException(Method m, Class attemptedToCreate, Throwable cause) {
+			super("Exception invoking inject method: " + m.getName() + " on " + attemptedToCreate.getCanonicalName(), cause);
+			this.attemptedToCreate = attemptedToCreate;
+		}
+
+		public Class getAttemptedToCreate() {
+			return attemptedToCreate;
+		}
 	}
 }

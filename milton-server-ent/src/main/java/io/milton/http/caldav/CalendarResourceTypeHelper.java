@@ -94,15 +94,18 @@ public class CalendarResourceTypeHelper implements ResourceTypeHelper {
 //        }
         
         // not sure if should be at this level
-        LockUtils.add(list, "calendar-auto-schedule");
-        if (r instanceof SchedulingInboxResource) {
+        
+        // thunderbird doesnt poll inbox if we have calendar-auto-schedule
+        //LockUtils.add(list, "calendar-auto-schedule");
+        
+//        if (r instanceof SchedulingInboxResource) {
             LockUtils.add(list, "schedule-inbox");            
-            LockUtils.add(list, "calendar-auto-schedule");
-        }
-        if (r instanceof SchedulingOutboxResource) {
+//            LockUtils.add(list, "calendar-auto-schedule");
+//        }
+//        if (r instanceof SchedulingOutboxResource) {
             LockUtils.add(list, "schedule-outbox");
-            LockUtils.add(list, "calendar-auto-schedule");
-        }
+//            LockUtils.add(list, "calendar-auto-schedule");
+//        }
         return list;
     }
 }

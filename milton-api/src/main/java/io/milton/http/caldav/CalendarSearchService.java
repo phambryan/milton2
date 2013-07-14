@@ -26,26 +26,75 @@ import java.util.List;
 
 /**
  * Allows searching for calendar items by date range
- * 
- * A default implementation will be used in CaldavProtocol, but you can implement
- * your own to optimise for SQL searching, etc
+ *
+ * A default implementation will be used in CaldavProtocol, but you can
+ * implement your own to optimise for SQL searching, etc
  *
  * @author brad
  */
 public interface CalendarSearchService {
-    
+
     /**
      * Query the free busy status of the given principal
-     * 
+     *
      * http://tools.ietf.org/html/rfc6638#section-2.1
-     * 
+     *
      * @param principal
      * @param iCalText
+     * @return
+     */
+    List<SchedulingResponseItem> queryFreeBusy(CalDavPrincipal principal, String iCalText);
+
+    List<ICalResource> findCalendarResources(CalendarResource calendar, Date start, Date finish) throws NotAuthorizedException, BadRequestException;
+
+    /**
+     * Return a list of events which represent invitations for the given user
+     * 
+     * @param attendee
+     * @return
+     * @throws NotAuthorizedException
+     * @throws BadRequestException 
+     */
+    List<ICalResource> findAttendeeResources(CalDavPrincipal attendee) throws NotAuthorizedException, BadRequestException;
+
+    /**
+     * Return a CTag which represents the state of all events which repreent invitations for the given user
+     * 
+     * @param attendee
+     * @return
+     * @throws NotAuthorizedException
+     * @throws BadRequestException 
+     */
+    String findAttendeeResourcesCTag(CalDavPrincipal attendee) throws NotAuthorizedException, BadRequestException;
+    
+    /**
+     * Returns the name of the collection which contains scheduling collections
+     * such as inbox and outbox:
+     * 
+     * Eg For scheduling inbox href like /users/joe/scheduling/inbox this would return scheuduling
+     * 
      * @return 
      */
-    List<SchedulingResponseItem> queryFreeBusy(CalDavPrincipal principal, String iCalText);    
+    String getSchedulingColName();
     
-    List<ICalResource> findCalendarResources(CalendarResource calendar, Date start, Date finish) throws NotAuthorizedException, BadRequestException;
+    /**
+     * Returns the name of the scheduling inbox collection, eg 'inbox'
+     * 
+     * @return 
+     */
+    String getSchedulingInboxColName();
     
-    List<ICalResource> findAttendeeResources(CalDavPrincipal attendee) throws NotAuthorizedException, BadRequestException;
+    /**
+     * Returns the name of the scheduling outbox collection, eg 'outbox'
+     * 
+     * @return 
+     */
+    String getSchedulingOutboxColName();
+    
+    /**
+     * Return true to enable scheduling properties and resources
+     * 
+     * @return 
+     */
+    boolean isSchedulingEnabled();
 }

@@ -42,6 +42,9 @@ public class MultiGetReport implements Report {
     private final Namespace NS_DAV = Namespace.getNamespace(WebDavProtocol.NS_DAV.getPrefix(), WebDavProtocol.NS_DAV.getName());
 
     public MultiGetReport(ResourceFactory resourceFactory, PropFindPropertyBuilder propertyBuilder, PropFindXmlGenerator xmlGenerator) {
+        if( resourceFactory == null ) {
+            throw new NullPointerException("resourceFactory is null");
+        }
         this.resourceFactory = resourceFactory;
         this.propertyBuilder = propertyBuilder;
         this.xmlGenerator = xmlGenerator;
@@ -66,8 +69,8 @@ public class MultiGetReport implements Report {
         List<PropFindResponse> respProps = new ArrayList<PropFindResponse>();
 
         for (String href : hrefs) {
-            href = HttpManager.decodeUrl( href );
-            Resource r = resourceFactory.getResource(host, href);
+            String decodedHref = HttpManager.decodeUrl( href );
+            Resource r = resourceFactory.getResource(host, decodedHref);
             if (r != null) {
                 if (r instanceof PropFindableResource) {
                     PropFindableResource pfr = (PropFindableResource) r;

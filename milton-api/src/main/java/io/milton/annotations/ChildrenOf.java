@@ -37,10 +37,36 @@ import java.util.List;
         return Band.findAll(SessionManager.session());
     }
  *
+ * Performance Tip
+ * Note that milton will scan children collections to locate single objects
+ * as part of resource location if no @ChildOf method is present. It will
+ * also scan by default if any @ChildOf methods have returned null. This
+ * can be a performance problem in many cases. To prevent @ChildrenOf methods
+ * being used to locate single items set the allowChildLookups property to false
+ * 
  * @author brad
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ChildrenOf {
+    /**
+     * If true (default) then the method this annotates can be used to locate single
+     * items. Otherwise this method will be ignored for single child lookups
+     * 
+     * @return 
+     */
+    boolean allowChildLookups() default true;
     
+    /**
+     * If true this method will replace (ie override) calls to any other methods
+     * with a target base class
+     * 
+     * For example if you have @ChildrenOf method targeting Animal, and another
+     * method targeting Cat, then by default both sets of resources will be combined
+     * to produce children for a source object of Cat. But by setting override to 
+     * true only the Cat method will be used
+     * 
+     * @return 
+     */
+    boolean override() default false;
 }

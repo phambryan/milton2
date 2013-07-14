@@ -1,0 +1,118 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>io.milton.apps</groupId>
+    <artifactId>milton-mini-server</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>war</packaging>
+
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <milton.version>2.5.1.0</milton.version>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-maven-plugin</artifactId>
+                <version>9.0.0.RC1</version>
+                <executions>
+                    <execution>
+                        <id>stop</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>stop</goal>
+                        </goals>
+                    </execution>
+                            
+                    <execution>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <webAppConfig>
+                        <contextPath>/</contextPath>
+                        <overrideDescriptor>src/test/resources/web.xml</overrideDescriptor>
+                    </webAppConfig>                            
+                    <systemProperties>
+                        
+                    </systemProperties>    
+                    <connectors>
+                        <connector implementation="org.mortbay.jetty.nio.SelectChannelConnector">
+                            <port>8080</port>  <!-- Run on non-priviledged port 8080 for linux -->
+                            <maxIdleTime>60000</maxIdleTime>
+                        </connector>
+                    </connectors>
+                    <stopKey>stop</stopKey>
+                    <stopPort>8091</stopPort>
+                    <useTestClasspath>true</useTestClasspath>
+                    <scanIntervalSeconds>0</scanIntervalSeconds>
+                </configuration>
+            </plugin>            
+        </plugins>
+    </build>
+
+    <repositories>
+        <repository>
+            <id>milton-repo</id>
+            <url>http://milton.io/maven/</url>
+        </repository>       
+    </repositories>     
+
+
+    <dependencies>
+        <dependency>
+            <groupId>org.mnode.ical4j</groupId>
+            <artifactId>ical4j</artifactId>
+            <version>1.0.2</version>
+        </dependency>        
+        <!-- For connection pooling, see http://jolbox.com/index.html?page=http://jolbox.com/benchmarks.html  -->
+        <dependency>
+            <groupId>com.jolbox</groupId>
+            <artifactId>bonecp-provider</artifactId>
+            <version>0.7.1.RELEASE</version>
+        </dependency>          
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.6.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.6.1</version>
+        </dependency>        
+        <dependency>
+            <groupId>io.milton</groupId>
+            <artifactId>milton-server-ent</artifactId>
+            <version>${milton.version}</version>
+        </dependency>  
+        <dependency>
+            <groupId>io.milton</groupId>
+            <artifactId>milton-cloud-vfs</artifactId>
+            <version>1.0.4</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>milton-api</artifactId>
+                    <groupId>io.milton</groupId>
+                </exclusion>
+            </exclusions>            
+        </dependency> 
+        <dependency>
+            <groupId>net.sf.ehcache</groupId>
+            <artifactId>ehcache-core</artifactId>
+            <version>2.6.5</version>
+        </dependency>
+        <dependency>
+            <groupId>net.sf.json-lib</groupId>
+            <artifactId>json-lib</artifactId>
+            <version>2.4</version>
+            <classifier>jdk15</classifier>
+        </dependency>
+    </dependencies>
+</project>

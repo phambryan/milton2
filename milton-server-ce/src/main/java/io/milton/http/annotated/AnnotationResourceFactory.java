@@ -45,6 +45,8 @@ import io.milton.annotations.Root;
 import io.milton.annotations.UniqueId;
 import io.milton.annotations.Users;
 import io.milton.common.Path;
+import io.milton.http.Auth;
+import io.milton.http.AuthenticationService;
 import io.milton.http.HttpManager;
 import io.milton.http.LockInfo;
 import io.milton.http.LockManager;
@@ -88,6 +90,8 @@ import org.slf4j.LoggerFactory;
 public final class AnnotationResourceFactory implements ResourceFactory {
 
 	private static final Logger log = LoggerFactory.getLogger(AnnotationResourceFactory.class);
+	private AuthenticationService authenticationService;
+	private boolean doEarlyAuth = true;
 	private io.milton.http.SecurityManager securityManager;
 	private LockManager lockManager;
 	private String contextPath;
@@ -106,6 +110,7 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 	ChildOfAnnotationHandler childOfAnnotationHandler = new ChildOfAnnotationHandler(this);
 	DisplayNameAnnotationHandler displayNameAnnotationHandler = new DisplayNameAnnotationHandler(this);
 	MakeCollectionAnnotationHandler makCollectionAnnotationHandler = new MakeCollectionAnnotationHandler(this);
+	MakeCalendarAnnotationHandler makeCalendarAnnotationHandler = new MakeCalendarAnnotationHandler(this);
 	MoveAnnotationHandler moveAnnotationHandler = new MoveAnnotationHandler(this);
 	DeleteAnnotationHandler deleteAnnotationHandler = new DeleteAnnotationHandler(this);
 	CopyAnnotationHandler copyAnnotationHandler = new CopyAnnotationHandler(this);
@@ -118,6 +123,7 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 	CalendarsAnnotationHandler calendarsAnnotationHandler = new CalendarsAnnotationHandler(this);
 	AddressBooksAnnotationHandler addressBooksAnnotationHandler = new AddressBooksAnnotationHandler(this);
 	ContactDataAnnotationHandler contactDataAnnotationHandler = new ContactDataAnnotationHandler(this);
+	CalendarInvitationsAnnotationHandler calendarInvitationsAnnotationHandler = new CalendarInvitationsAnnotationHandler(this);
 	CommonPropertyAnnotationHandler<String> nameAnnotationHandler = new CommonPropertyAnnotationHandler(Name.class, this, "name", "fileName");
 	CommonPropertyAnnotationHandler<Date> modifiedDateAnnotationHandler = new CommonPropertyAnnotationHandler<Date>(ModifiedDate.class, this, "modifiedDate");
 	CommonPropertyAnnotationHandler<Date> createdDateAnnotationHandler = new CommonPropertyAnnotationHandler<Date>(CreatedDate.class, this);
@@ -164,7 +170,7 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 					mapOfAnnotationHandlersByMethod.put(m, ah);
 				}
 			}
-		}	
+		}
 	}
 
 	@Override
@@ -179,6 +185,31 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 				log.warn("Could not find a root resource for host: " + host + " Using " + rootAnnotationHandler.getControllerMethods().size() + " root methods");
 			}
 			return null;
+		}
+
+		if (doEarlyAuth) {
+			if (authenticationService != null) {
+				Request request = HttpManager.request();
+				if (request.getAuthorization() == null) {
+					// Note that authentication will usually result in a call to getResource to find the principal..
+					// so we must ensure we dont go into a recursive loop				
+					if (!request.getAttributes().containsKey("in.early.auth")) {
+						request.getAttributes().put("in.early.auth", Boolean.TRUE);
+						AuthenticationService.AuthStatus authStatus = authenticationService.authenticate(hostRoot, request);
+						if (authStatus == null) {
+							// Not attempted, so anonymous request.
+							return null;
+						} else {
+							if (authStatus.loginFailed) {
+								log.warn("Early authentication failed");
+								throw new NotAuthorizedException(hostRoot);
+							} else {
+								log.info("Early authentication succeeded");
+							}
+						}
+					}
+				}
+			}
 		}
 
 		Resource r;
@@ -239,6 +270,28 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 
 	public String getRealm(String host) {
 		return securityManager.getRealm(host);
+	}
+
+	public void setAuthenticationService(AuthenticationService authenticationService) {
+		this.authenticationService = authenticationService;
+	}
+
+	public AuthenticationService getAuthenticationService() {
+		return authenticationService;
+	}
+
+	/**
+	 * If true authentication will be attempted as soon as the root resource is
+	 * located
+	 *
+	 * @return
+	 */
+	public boolean isDoEarlyAuth() {
+		return doEarlyAuth;
+	}
+
+	public void setDoEarlyAuth(boolean doEarlyAuth) {
+		this.doEarlyAuth = doEarlyAuth;
 	}
 
 	public void setSecurityManager(io.milton.http.SecurityManager securityManager) {
@@ -395,20 +448,30 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 	}
 
 	/**
-	 * 
+	 *
 	 * @param sourceRes
-	 * @param mandatorySecondArg - if present will be used as second arg. Used by AccessControlListAnnotationHandler to always provide user to second arg, even when null
+	 * @param mandatorySecondArg - if present will be used as second arg. Used
+	 * by AccessControlListAnnotationHandler to always provide user to second
+	 * arg, even when null
 	 * @param m
 	 * @param otherValues
 	 * @return
-	 * @throws Exception 
+	 * @throws Exception
 	 */
 	public Object[] buildInvokeArgsExt(AnnoResource sourceRes, Object mandatorySecondArg, boolean forceUseSecondArg, java.lang.reflect.Method m, Object... otherValues) throws Exception {
 		if (log.isTraceEnabled()) {
-			log.trace("buildInvokeArgs: source=" + sourceRes.getSource() + " on method: " + m);
+			log.trace("buildInvokeArgsExt: source=" + sourceRes.getSource() + " on method: " + m);
 		}
 		Request request = HttpManager.request();
 		Response response = HttpManager.response();
+		Auth auth = request.getAuthorization();
+		AnnoPrincipalResource principal = null;
+		if (auth != null) {
+			if (auth.getTag() instanceof AnnoPrincipalResource) {
+				principal = (AnnoPrincipalResource) auth.getTag();
+			}
+		}
+
 		Object[] args = new Object[m.getParameterTypes().length];
 		List list = new ArrayList();
 
@@ -436,16 +499,25 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 			if (i == 1 && forceUseSecondArg) {
 				args[i] = mandatorySecondArg; // hack for methods which can have a null 2nd arg. Without this any other matching object would be provided
 			} else {
-				Class type = m.getParameterTypes()[i];
-				Object argValue;
-				try {
-					argValue = findArgValue(type, request, response, list);
-				} catch (UnresolvableParameterException e) {
-					log.warn("Could not resolve parameter: " + i + "  in method: " + m.getName());
-					//System.out.println("Couldnt find parameter " + type + " for method: " + m);				
-					argValue = null;
+				if (isPrincipalArg(m, i)) {
+					if (principal != null) {
+						args[i] = principal.source;
+					} else {
+						log.warn("Null principal provided for method: " + m);
+						args[i] = null;
+					}
+				} else {
+					Class type = m.getParameterTypes()[i];
+					Object argValue;
+					try {
+						argValue = findArgValue(type, request, response, list);
+					} catch (UnresolvableParameterException e) {
+						log.warn("Could not resolve parameter: " + i + "  in method: " + m.getName());
+						//System.out.println("Couldnt find parameter " + type + " for method: " + m);				
+						argValue = null;
+					}
+					args[i] = argValue;
 				}
-				args[i] = argValue;
 			}
 		}
 		return args;
@@ -522,7 +594,12 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 			return new AnnoCalendarResource(this, childSource, parent);
 		}
 		if (parent instanceof AnnoCalendarResource) {
-			return new AnnoEventResource(this, childSource, parent);
+			if (childrenOfAnnotationHandler.isCompatible(childSource) || childOfAnnotationHandler.isCompatible(childSource)) {
+				// This is an edge case, shouldnt really have collections inside calendars
+				return new AnnoCollectionResource(this, childSource, parent);
+			} else {
+				return new AnnoEventResource(this, childSource, parent);
+			}
 		}
 		if (m.getAnnotation(AddressBooks.class) != null) {
 			return new AnnoAddressBookResource(this, childSource, parent);
@@ -635,6 +712,17 @@ public final class AnnotationResourceFactory implements ResourceFactory {
 	private boolean in(Method m, Method... methods) {
 		for (Method listMethod : methods) {
 			if (m.equals(listMethod)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean isPrincipalArg(java.lang.reflect.Method m, int i) {
+		Annotation[] arr = m.getParameterAnnotations()[i];
+		Class annoType = io.milton.annotations.Principal.class;
+		for (Annotation a : arr) {
+			if (a.annotationType().equals(annoType)) {
 				return true;
 			}
 		}

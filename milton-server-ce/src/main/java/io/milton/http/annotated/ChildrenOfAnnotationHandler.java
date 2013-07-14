@@ -18,6 +18,8 @@ import io.milton.annotations.ChildrenOf;
 import io.milton.http.Request.Method;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -30,26 +32,50 @@ public class ChildrenOfAnnotationHandler extends AbstractAnnotationHandler {
 		super(outer, ChildrenOf.class, Method.PROPFIND);
 	}
 
-	public Set<AnnoResource> execute(AnnoCollectionResource parent) {
-		Object source = parent.getSource();
+	public Set<AnnoResource> execute(AnnoCollectionResource parent, boolean isChildLookup) {
 		Set<AnnoResource> result = new HashSet<AnnoResource>();
-		for (ControllerMethod cm : getMethods(source.getClass())) {
+		List<ControllerMethod> candidateMethods = getMethods(parent.source.getClass());
+		// Find any override methods
+		Set<Class> overrideSourceTypes = new HashSet<Class>();
+		for (ControllerMethod cm : candidateMethods) {
+			ChildrenOf anno = (ChildrenOf) cm.anno;
+			if (anno.override()) {
+				overrideSourceTypes.add(cm.sourceType);
+			}
+		}
+		// If we have override methods, then remove any methods targeting base classes of the override source types
+		if (overrideSourceTypes.size() > 0) {
+			Iterator<ControllerMethod> it = candidateMethods.iterator();
+			while (it.hasNext()) {
+				Class sourceType = it.next().sourceType;
+				for (Class overrideClass : overrideSourceTypes) {
+					if (overrideClass != sourceType && sourceType.isAssignableFrom(overrideClass)) {
+						it.remove();
+						break;
+					}
+				}
+			}
+		}
+
+		for (ControllerMethod cm : candidateMethods) {
 			try {
-				Object o = invoke(cm, parent);
-				if( o == null ) {
-					// ignore
-				} else if( o instanceof Collection ) {
-					Collection l = (Collection)o;
-					for( Object item : l) {
-						result.add(annoResourceFactory.instantiate(item, parent, cm.method));
+				if (lookupPermitted(isChildLookup, cm)) {
+					Object o = invoke(cm, parent);
+					if (o == null) {
+						// ignore
+					} else if (o instanceof Collection) {
+						Collection l = (Collection) o;
+						for (Object item : l) {
+							result.add(annoResourceFactory.instantiate(item, parent, cm.method));
+						}
+					} else if (o.getClass().isArray()) {
+						Object[] arr = (Object[]) o;
+						for (Object item : arr) {
+							result.add(annoResourceFactory.instantiate(item, parent, cm.method));
+						}
+					} else {
+						result.add(annoResourceFactory.instantiate(o, parent, cm.method));
 					}
-				} else if( o.getClass().isArray()) {
-					Object[] arr = (Object[]) o;
-					for( Object item : arr) {
-						result.add(annoResourceFactory.instantiate(item, parent, cm.method));
-					}
-				} else {
-					result.add(annoResourceFactory.instantiate(o, parent, cm.method));
 				}
 			} catch (Exception e) {
 				throw new RuntimeException(e);
@@ -57,5 +83,13 @@ public class ChildrenOfAnnotationHandler extends AbstractAnnotationHandler {
 
 		}
 		return result;
+	}
+
+	private boolean lookupPermitted(boolean childLookup, ControllerMethod cm) {
+		ChildrenOf anno = (ChildrenOf) cm.anno;
+		if (childLookup) {
+			return anno.allowChildLookups();
+		}
+		return true;
 	}
 }
