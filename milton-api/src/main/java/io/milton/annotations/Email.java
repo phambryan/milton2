@@ -20,24 +20,15 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a method as one which creates calendars. A calendar is just a collection
- * which contains events.
+ * Marks the method as one which returns the email address for a type of object.
  * 
- * Your method should have the following arguments:
- * <ul>
- * <li>The target object which must be the source for the calendars home</li>
- * <li>The name of the new calendar</li>
- * <li>The initial fields to set: Map<QName, String> fieldsToSet</li>
- * </ul>
- * 
- * The make calendar method should apply the given fields to the calendar and persist
- * 
- * Return the source object for the new calendar
+ * Usually the type of object will be the same as returned by @Users method,
+ * ie your principal source object
  *
  * @author brad
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface MakeCalendar {
+public @interface Email {
     
 }

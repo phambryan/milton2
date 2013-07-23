@@ -20,14 +20,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a method as one which returns calendar objects. A calendar is something
- * which contains events.
+ * Marks a method as one which finds calendar event invitations for a user
  * 
- * @Calendars methods MUST take a @User folder collection object as their parent. For example:
- *  @User       /users/brad
- *  @Calendars  /users/brad/calendars
- *              /user/brad/calendars/default
- *              /user/brad/calendars/default/event1.ics
+ * First argument must be the user source object
+ * 
+ * Returns a list of objects which represent calendar items
  * 
  * 
  *

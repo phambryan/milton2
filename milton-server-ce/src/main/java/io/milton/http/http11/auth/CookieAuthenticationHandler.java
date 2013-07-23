@@ -93,17 +93,14 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 			if (log.isTraceEnabled()) {
 				log.trace("authenticate: use delegateHandler: " + delegateHandler);
 			}
-			// Attempt to authenticate against wrapped handler
-			// If successful generate a signed cookie and put into a request attribute
-			log.info("use handler: " + delegateHandler);
 			Object tag = delegateHandler.authenticate(resource, request);
 			if (tag != null) {
 				if (tag instanceof DiscretePrincipal) {
 					DiscretePrincipal p = (DiscretePrincipal) tag;
 					setLoginCookies(p, request);
-					log.trace("authentication passed by delegated handler, persisted userUrl to cookie");
+					log.trace("authenticate: authentication passed by delegated handler, persisted userUrl to cookie");
 				} else {
-					log.warn("auth.tag is not a " + DiscretePrincipal.class + ", is: " + tag + " so is not compatible with cookie authentication");
+					log.warn("authenticate: auth.tag is not an instance of " + DiscretePrincipal.class + ", is: " + tag.getClass() + " so is not compatible with cookie authentication");
 					// If form auth returned a non principal object then there is no way to
 					// persist the authentication state, so subsequent requests will fail. To prevent
 					// this we disable form auth and reject the login, this will result in a Basic/Digest
@@ -111,7 +108,7 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 					if (delegateHandler instanceof FormAuthenticationHandler) {
 						LoginResponseHandler.setDisableHtmlResponse(request);
 						return null;
-					}					
+					}
 				}
 				return tag;
 			} else {
@@ -248,7 +245,7 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 	 * @param request
 	 * @return
 	 */
-	private String getUserUrl(Request request) {
+	public String getUserUrl(Request request) {
 		if (request == null) {
 			return null;
 		}
@@ -270,13 +267,34 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 	public String getUserUrlFromRequest(Request request) {
 		String encodedUserUrl = getCookieOrParam(request, cookieUserUrlValue);
 		if (encodedUserUrl == null) {
+			log.trace("getUserUrlFromRequest: Null encodedUserUrl");
 			return null;
 		}
+		if (log.isDebugEnabled()) {
+			log.debug("getUserUrlFromRequest: Raw:" + encodedUserUrl);
+		}
+		if (!encodedUserUrl.startsWith("b64")) {
+			log.trace("Looks like a plain path, return as is");
+			return encodedUserUrl;
+		} else {
+			log.trace("Looks like a base64 encoded string");
+			encodedUserUrl = encodedUserUrl.substring(3);
+		}
+		encodedUserUrl = Utils.decodePath(encodedUserUrl);
+		if (log.isDebugEnabled()) {
+			log.debug("getUserUrlFromRequest: Percent decoded:" + encodedUserUrl);
+		}
+
 		byte[] arr = base64.fromString(encodedUserUrl);
 		if (arr == null) {
-			return null;
+			log.debug("Failed to decode encodedUserUrl, so maybe its not encoded, return as it is");
+			return encodedUserUrl; // its just not encoded
 		}
-		return new String(arr);
+		String s = new String(arr);
+		if (log.isDebugEnabled()) {
+			log.debug("getUserUrlFromRequest: Decoded user url:" + s);
+		}
+		return s;
 	}
 
 	public String getHashFromRequest(Request request) {
@@ -302,10 +320,12 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 		}
 		String salt = arr[0];
 		String hash = arr[1];
-		String expectedHash = DigestUtils.md5Hex(userUrl + ":" + salt);
+		String hashSource = userUrl + ":" + salt;
+		String expectedHash = DigestUtils.md5Hex(hashSource);
 		boolean ok = expectedHash.equals(hash);
 		if (!ok) {
-			log.warn("Cookie sig does not match expected. Given=" + hash + " Expected=" + expectedHash + "  salt=" + salt);
+			log.warn("Cookie sig does not match expected. Given=" + hash + " Expected=" + expectedHash);
+			log.warn("  hashSource=" + hashSource);
 		}
 		return ok;
 	}
@@ -313,7 +333,7 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 	private void setCookieValues(Response response, String userUrl, String hash) {
 		log.trace("setCookieValues");
 		BeanCookie c = new BeanCookie(cookieUserUrlValue);
-		String encodedUserUrl = base64.toString(userUrl.getBytes(Utils.UTF8));
+		String encodedUserUrl = encodeUserUrl(userUrl);
 		c.setValue(encodedUserUrl);
 		c.setPath("/");
 		c.setVersion(1);
@@ -331,6 +351,13 @@ public class CookieAuthenticationHandler implements AuthenticationHandler {
 			c.setExpiry(SECONDS_PER_YEAR);
 		}
 		response.setCookie(c);
+	}
+
+	public String encodeUserUrl(String userUrl) {
+		String encodedUserUrl = base64.toString(userUrl.getBytes(Utils.UTF8));
+		encodedUserUrl = Utils.percentEncode(encodedUserUrl); // base64 uses some chars illegal in cookies, eg equals
+		encodedUserUrl = "b64" + encodedUserUrl; // need to distinguish if base64 encoded or not
+		return (encodedUserUrl);
 	}
 
 	private void clearCookieValue(Response response) {

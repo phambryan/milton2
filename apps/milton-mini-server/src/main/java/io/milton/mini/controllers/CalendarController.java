@@ -24,6 +24,7 @@ import io.milton.annotations.ChildrenOf;
 import io.milton.annotations.Delete;
 import io.milton.annotations.Get;
 import io.milton.annotations.ICalData;
+import io.milton.annotations.MakeCalendar;
 import io.milton.annotations.ModifiedDate;
 import io.milton.annotations.Post;
 import io.milton.annotations.Principal;
@@ -37,6 +38,7 @@ import io.milton.http.exceptions.NotAuthorizedException;
 import io.milton.mini.DataSessionManager;
 import io.milton.mini.services.CalendarService;
 import io.milton.vfs.data.DataSession;
+import io.milton.vfs.db.AttendeeRequest;
 import io.milton.vfs.db.CalEvent;
 import io.milton.vfs.db.Calendar;
 import io.milton.vfs.db.Profile;
@@ -49,7 +51,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import javax.inject.Inject;
+import javax.xml.namespace.QName;
 import org.apache.commons.io.IOUtils;
 import org.hibernate.Transaction;
 
@@ -77,7 +81,11 @@ public class CalendarController {
 
     @ChildrenOf
     @Calendars
-    public List<Calendar> getCalendars(CalendarsHome cals) {
+    public List<Calendar> getCalendars(CalendarsHome cals, @Principal Profile profile) throws NotAuthorizedException {
+        if( profile == null ) {
+            log.warn("getCalendarrs with no user");
+            throw new NotAuthorizedException();
+        }
         return cals.user.getCalendars();
     }
 
@@ -95,7 +103,7 @@ public class CalendarController {
 
     @ChildOf(pathSuffix = "new")
     public Calendar createNewCalendar(CalendarsHome calendarsHome, String name, @Principal Profile currentUser) throws NotAuthorizedException {
-        if( currentUser == null ) {
+        if (currentUser == null) {
             throw new NotAuthorizedException(null);
         }
         Calendar newCal = calendarsHome.user.newCalendar(name, currentUser);
@@ -111,6 +119,17 @@ public class CalendarController {
         tx.commit();
         log.info("saved cal");
         return calendar;
+    }
+    
+    @MakeCalendar
+    public Calendar createNewCalendar(CalendarsHome calendarsHome, String newName, Map<QName, String> fieldsToSet, @Principal Profile currentUser) {
+        Calendar newCal = calendarsHome.user.newCalendar(newName, currentUser);
+        log.info("Create new calendar: " + newName);
+        for( QName qname : fieldsToSet.keySet()) {
+            log.info(" field: " + qname + " = " + fieldsToSet.get(qname));
+        }
+        SessionManager.session().save(newCal);
+        return newCal;
     }
 
     /**
@@ -137,38 +156,55 @@ public class CalendarController {
     public void getEventIcal(CalEvent event, Calendar calendar, Request request, OutputStream out, Range range) throws IOException {
         DataSession ds = dataSessionManager.get(request, calendar);
         DataSession.FileNode fileNode = (DataSession.FileNode) ds.getRootDataNode().get(event.getName());
-        if (range == null) {
-            fileNode.writeContent(out);
+        if (fileNode != null) {
+            if (range == null) {
+                fileNode.writeContent(out);
+            } else {
+                fileNode.writeContent(out, range.getStart(), range.getFinish());
+            }
         } else {
-            fileNode.writeContent(out, range.getStart(), range.getFinish());
+            String s = calendarService.getCalendar(event);
+            out.write(s.getBytes(StringUtils.UTF8));
         }
     }
 
+    @Get
+    @ICalData
+    public void getAttendeeRequestIcal(AttendeeRequest event, Request request, OutputStream out, Range range) throws IOException {
+        CalEvent orgEvent = event.getOrganiserEvent();
+        Calendar calendar = orgEvent.getCalendar();
+        getEventIcal(orgEvent, calendar, request, out, range);
+    }
+
     @PutChild
-    public CalEvent createEvent(Calendar calendar, String newName, InputStream inputStream, Request request, @Principal Profile principal) throws IOException {
+    public CalEvent createEvent(Calendar calendar, final String newName, InputStream inputStream, Request request, final @Principal Profile principal) throws IOException {
         log.trace("createNew: set content");
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         IOUtils.copy(inputStream, bout);
 
-        DataSession ds = dataSessionManager.get(request, calendar, true, principal);
-        DataSession.FileNode newFileNode = (DataSession.FileNode) ds.getRootDataNode().get(newName);
-        if (newFileNode == null) { // usually should be null
-            newFileNode = ds.getRootDataNode().addFile(newName);
-        }
-        newFileNode.setContent(new ByteArrayInputStream(bout.toByteArray()));
-        ds.save(principal);
+        final DataSession ds = dataSessionManager.get(request, calendar, true, principal);
+
 
         String icalData = bout.toString(StringUtils.UTF8.name());
 //        System.out.println("new ical --- " + newName);
 //        System.out.println(icalData);
 //        System.out.println("---");
-        CalEvent newEvent = calendarService.createEvent(calendar, newName, icalData);
+        CalEvent newEvent = calendarService.createEvent(calendar, newName, icalData, new CalendarService.UpdatedEventCallback() {
+            public void updated(String updatedIcal) throws IOException {
+                DataSession.FileNode newFileNode = (DataSession.FileNode) ds.getRootDataNode().get(newName);
+                if (newFileNode == null) { // usually should be null
+                    newFileNode = ds.getRootDataNode().addFile(newName);
+                }
+                newFileNode.setContent(new ByteArrayInputStream(updatedIcal.getBytes(StringUtils.UTF8)));
+                ds.save(principal);
+            }
+        });
 
         return newEvent;
     }
 
     @PutChild
-    public CalEvent createEvent(CalEvent event, InputStream inputStream, Request request, Calendar calendar, @Principal Profile principal) throws IOException {
+    public CalEvent updateEvent(CalEvent event, InputStream inputStream, Request request, Calendar calendar, @Principal Profile principal) throws IOException {
         log.trace("createNew: set content");
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         IOUtils.copy(inputStream, bout);
