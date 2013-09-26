@@ -55,6 +55,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -143,6 +144,7 @@ public class HttpManagerBuilder {
 	protected boolean enableCookieAuth = true;
 	protected boolean enabledCkBrowser = false;
 	protected boolean enableEarlyAuth = false;
+	protected boolean enableTextContentProperty = false;
 	protected String loginPage = "/login.html";
 	protected List<String> loginPageExcludePaths;
 	protected File rootDir = null;
@@ -244,16 +246,17 @@ public class HttpManagerBuilder {
 				if (basicHandler != null) {
 					authenticationHandlers.add(basicHandler);
 				}
+				if (nonceProvider == null) {
+					if (expiredNonceRemover == null) {
+						expiredNonceRemover = new ExpiredNonceRemover(nonces, nonceValiditySeconds);
+						showLog("expiredNonceRemover", expiredNonceRemover);
+					}
+					nonceProvider = new SimpleMemoryNonceProvider(nonceValiditySeconds, expiredNonceRemover, nonces);
+					showLog("nonceProvider", nonceProvider);
+				}
 				if (digestHandler == null) {
 					if (enableDigestAuth) {
-						if (nonceProvider == null) {
-							if (expiredNonceRemover == null) {
-								expiredNonceRemover = new ExpiredNonceRemover(nonces, nonceValiditySeconds);
-								showLog("expiredNonceRemover", expiredNonceRemover);
-							}
-							nonceProvider = new SimpleMemoryNonceProvider(nonceValiditySeconds, expiredNonceRemover, nonces);
-							showLog("nonceProvider", nonceProvider);
-						}
+
 						digestHandler = new DigestAuthenticationHandler(nonceProvider);
 					}
 				}
@@ -290,7 +293,7 @@ public class HttpManagerBuilder {
 							}
 						}
 						initCookieSigningKeys();
-						cookieAuthenticationHandler = new CookieAuthenticationHandler(cookieDelegateHandlers, mainResourceFactory, cookieSigningKeys);
+						cookieAuthenticationHandler = new CookieAuthenticationHandler(nonceProvider, cookieDelegateHandlers, mainResourceFactory, cookieSigningKeys);
 						authenticationHandlers.add(cookieAuthenticationHandler);
 					}
 				}
@@ -322,6 +325,21 @@ public class HttpManagerBuilder {
 			if (fKeys.exists()) {
 				log.info("Reading cookie signing keys from: " + fKeys.getAbsolutePath());
 				FileUtils.readLines(fKeys, cookieSigningKeys);
+				log.info("Loaded Keys: " + cookieSigningKeys.size());
+				if( cookieSigningKeys.isEmpty()) {
+					UUID newKey = UUID.randomUUID();
+					cookieSigningKeys.add(newKey.toString());
+					FileUtils.writeLines(fKeys, cookieSigningKeys);					
+				}
+				
+				// Remove any blank lines
+				Iterator<String> it = cookieSigningKeys.iterator();
+				while( it.hasNext() ) {
+					String s = it.next();
+					if( s == null || s.length() == 0 ) {
+						it.remove();
+					}
+				}
 			} else {
 				log.warn("Cookie signing keys file does not exist: " + fKeys.getAbsolutePath() + " Will attempt to create it with a random key");
 				log.warn("*** If using a server cluster you MUST ensure a common key file is used ***");
@@ -528,7 +546,7 @@ public class HttpManagerBuilder {
 			this.propFindRequestFieldParser = new MsPropFindRequestFieldParser(defaultFieldParse); // use MS decorator for windows support				
 		}
 		if (webDavProtocol == null && webdavEnabled) {
-			webDavProtocol = new WebDavProtocol(handlerHelper, resourceTypeHelper, webdavResponseHandler, propertySources, quotaDataAccessor, propPatchSetter, initPropertyAuthoriser(), eTagGenerator, urlAdapter, resourceHandlerHelper, userAgentHelper(), propFindRequestFieldParser(), propFindPropertyBuilder(), displayNameFormatter);
+			webDavProtocol = new WebDavProtocol(handlerHelper, resourceTypeHelper, webdavResponseHandler, propertySources, quotaDataAccessor, propPatchSetter, initPropertyAuthoriser(), eTagGenerator, urlAdapter, resourceHandlerHelper, userAgentHelper(), propFindRequestFieldParser(), propFindPropertyBuilder(), displayNameFormatter, enableTextContentProperty);
 		}
 	}
 
