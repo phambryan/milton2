@@ -62,6 +62,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.inject.Inject;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -149,7 +150,7 @@ public class HttpManagerBuilder {
 	protected List<String> loginPageExcludePaths;
 	protected File rootDir = null;
 	protected io.milton.http.SecurityManager securityManager;
-	protected String fsContextPath;
+	protected String contextPath;
 	protected String fsRealm = "milton";
 	protected Map<String, String> mapOfNameAndPasswords;
 	protected String defaultUser = "user";
@@ -177,6 +178,7 @@ public class HttpManagerBuilder {
 	private List dependencies;
 	private List<String> cookieSigningKeys;
 	private String cookieSigningKeysFile;
+	private boolean useLongLivedCookies = true;
 
 	protected io.milton.http.SecurityManager securityManager() {
 		if (securityManager == null) {
@@ -229,11 +231,18 @@ public class HttpManagerBuilder {
 			if (!rootDir.exists() || !rootDir.isDirectory()) {
 				throw new RuntimeException("Root directory is not valid: " + rootDir.getAbsolutePath());
 			}
-			FileSystemResourceFactory fsResourceFactory = new FileSystemResourceFactory(rootDir, securityManager(), fsContextPath);
+			log.info("Using FileSystemResourceFactory with context path: " + contextPath);
+			FileSystemResourceFactory fsResourceFactory = new FileSystemResourceFactory(rootDir, securityManager(), contextPath);
 			fsResourceFactory.setContentService(fileContentService);
 			mainResourceFactory = fsResourceFactory;
 			log.info("Using file system with root directory: " + rootDir.getAbsolutePath());
 		}
+		if( mainResourceFactory instanceof AnnotationResourceFactory ) {
+			AnnotationResourceFactory arf = (AnnotationResourceFactory) mainResourceFactory;
+			log.info("Set AnnotationResourceFactory context path to: " + contextPath);
+			arf.setContextPath(contextPath);
+		}
+
 		log.info("Using mainResourceFactory: " + mainResourceFactory.getClass());
 		if (authenticationService == null) {
 			if (authenticationHandlers == null) {
@@ -294,6 +303,7 @@ public class HttpManagerBuilder {
 						}
 						initCookieSigningKeys();
 						cookieAuthenticationHandler = new CookieAuthenticationHandler(nonceProvider, cookieDelegateHandlers, mainResourceFactory, cookieSigningKeys);
+						cookieAuthenticationHandler.setUseLongLivedCookies(useLongLivedCookies);
 						authenticationHandlers.add(cookieAuthenticationHandler);
 					}
 				}
@@ -336,7 +346,7 @@ public class HttpManagerBuilder {
 				Iterator<String> it = cookieSigningKeys.iterator();
 				while( it.hasNext() ) {
 					String s = it.next();
-					if( s == null || s.length() == 0 ) {
+					if( StringUtils.isBlank(s) ) {
 						it.remove();
 					}
 				}
@@ -1038,13 +1048,30 @@ public class HttpManagerBuilder {
 	 * @return
 	 */
 	public String getFsContextPath() {
-		return fsContextPath;
+		return contextPath;
 	}
 
 	public void setFsContextPath(String fsContextPath) {
-		this.fsContextPath = fsContextPath;
+		this.contextPath = fsContextPath;
 	}
 
+	/**
+	 * Used to set context path on certain implementations of ResourceFactory
+	 * 
+	 * Alias for fsContentPath
+	 * 
+	 * @return 
+	 */
+	public String getContextPath() {
+		return contextPath;
+	}
+
+	public void setContextPath(String contextPath) {
+		this.contextPath = contextPath;
+	}
+
+	
+	
 	public UserAgentHelper getUserAgentHelper() {
 		return userAgentHelper;
 	}
@@ -1329,6 +1356,19 @@ public class HttpManagerBuilder {
 	public void setCookieSigningKeys(List<String> cookieSigningKeys) {
 		this.cookieSigningKeys = cookieSigningKeys;
 	}
+	
+	public void setUseLongLivedCookies(boolean useLongLivedCookies) {
+		this.useLongLivedCookies = useLongLivedCookies;
+	}
+
+	/**
+	 * If true signed cookies for authentication will be long-lived, as defined
+	 * in CookieAuthenticationHandler.SECONDS_PER_YEAR
+	 * @return 
+	 */
+	public boolean isUseLongLivedCookies() {
+		return useLongLivedCookies;
+	}	
 
 	/**
 	 * If present is assumed to be a text file containing lines, where each line
